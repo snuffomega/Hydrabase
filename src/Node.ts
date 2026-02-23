@@ -22,7 +22,7 @@ export default class Node {
   }
 
   public addPeer(socket: WebSocketClient | WebSocketServerConnection) {
-    if (socket.address in this.peers && this.peers[socket.address]?.isOpened) return console.warn('WARN:', 'Already connected to peer')
+    if (socket.address in this.peers) return console.warn('WARN:', 'Already connected/connecting to peer')
     this.peers[socket.address] = new Peer(socket, peer => this.addPeer(peer), this.crypto, () => { delete this.peers[socket.address] }, this, this.db, this.metadataManager.installedPlugins)
     this.announcePeer(socket)
   }
@@ -38,6 +38,14 @@ export default class Node {
       const address = _address as `0x${string}`
       if (address === '0x0') continue
       const peer = this.peers[address]!
+
+      try {
+        await peer.ready
+      } catch {
+        console.warn('WARN:', `Skipping peer ${address}: handshake failed`)
+        delete this.peers[address]
+        continue
+      }
       if (!peer.isOpened) {
         console.warn('WARN:', 'Skipping request, connection not open')
         delete this.peers[address]
