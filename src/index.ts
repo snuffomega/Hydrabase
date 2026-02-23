@@ -46,6 +46,6 @@ const node = new Node(CONFIG.serverPort, CONFIG.dhtPort, new Crypto(await getPri
 
 await new Promise(res => setTimeout(res, 30_000))
 
-// console.log('LOG:', 'Track results:', await node.search('track', 'dont stop me now'));
-// console.log('LOG:', 'Artist results:', await node.search('artist', 'jay z'));
-// console.log('LOG:', 'Album results:', await node.search('album', 'made in england'));
+console.log('LOG:', 'Track results:', await node.search('track', 'dont stop me now'));
+console.log('LOG:', 'Artist results:', await node.search('artist', 'jay z'));
+console.log('LOG:', 'Album results:', await node.search('album', 'made in england'));
