@@ -9,6 +9,7 @@ export interface NodeStats {
   address: `0x${string}`
   installedPlugins: string[]
   knownPlugins: string[]
+  knownPeers: string[]
   connectedPeers: number
   peers: {
     address: `0x${string}`
@@ -55,6 +56,7 @@ export class StatsReporter {
       address: this.address,
       installedPlugins: this.plugins.map(p => p.id),
       knownPlugins: this.knownPlugins(),
+      knownPeers: this.knownPeers(),
       connectedPeers: Object.keys(peers).filter(a => a !== '0x0').length,
       peers: Object.entries(peers)
         .filter(([address]) => address !== '0x0')
@@ -93,5 +95,16 @@ export class StatsReporter {
       SELECT DISTINCT plugin_id FROM albums
     `))
     return rows.map(r => r.plugin_id)
+  }
+
+  private knownPeers(): string[] {
+    const rows = this.db.all<{ address: string }>(sql.raw(`
+      SELECT DISTINCT address FROM tracks
+      UNION
+      SELECT DISTINCT address FROM artists
+      UNION
+      SELECT DISTINCT address FROM albums
+    `))
+    return rows.map(r => r.address)
   }
 }
