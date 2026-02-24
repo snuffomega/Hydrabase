@@ -1,9 +1,8 @@
-import { CapabilitySchema } from '../HIP1/capabilities';
 import { AnnounceSchema } from '../HIP4/announce';
 import { RequestSchema, ResponseSchema } from '../../RequestManager';
 
 export const MessageSchemas = {
-  capability: CapabilitySchema,
+  // capability: CapabilitySchema,
   request: RequestSchema,
   response: ResponseSchema,
   announce: AnnounceSchema
