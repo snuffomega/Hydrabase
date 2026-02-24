@@ -1,4 +1,3 @@
-import { HIP1_Conn_Capabilities, type Capability } from './protocol/HIP1/capabilities'
 import z from 'zod'
 import { AlbumSearchResultSchema, ArtistSearchResultSchema, TrackSearchResultSchema } from './Metadata';
 
@@ -30,53 +29,53 @@ type PendingRequest<T extends Request['type']> = {
 export class RequestManager {
   private nonce = -1
   private readonly pending = new Map<number, PendingRequest<Request['type']>>()
-  private _peerCapability?: Capability
-  private _handshakeComplete = false
-  private _handshakeResolve?: () => void
-  private _handshakeReject?: (reason: Error) => void
-  private readonly _handshakePromise: Promise<void>
-  private killTimeout = false
+  // private _peerCapability?: Capability
+  // private _handshakeComplete = false
+  // private _handshakeResolve?: () => void
+  // private _handshakeReject?: (reason: Error) => void
+  // private readonly _handshakePromise: Promise<void>
+  // private killTimeout = false
 
-  constructor(private readonly timeoutMs: number = 15_000, handshakeTimeoutMs: number = 30_000) {
-    this._handshakePromise = new Promise<void>((resolve, reject) => {
-      this._handshakeResolve = resolve
-      this._handshakeReject = reject
-    })
-    setTimeout(() => {
-      if (!this.killTimeout) this._handshakeReject?.(new Error('Capability handshake timed out'))
-    }, handshakeTimeoutMs)
+  constructor(private readonly timeoutMs: number = 15_000) {
+    // this._handshakePromise = new Promise<void>((resolve, reject) => {
+      // this._handshakeResolve = resolve
+      // this._handshakeReject = reject
+    // })
+    // setTimeout(() => {
+    //   if (!this.killTimeout) this._handshakeReject?.(new Error('Capability handshake timed out'))
+    // }, handshakeTimeoutMs)
   }
 
-  public receiveCapability(raw: unknown): boolean {
-    const result = HIP1_Conn_Capabilities.validateCapability(raw)
+  // public receiveCapability(raw: unknown): boolean {
+  //   const result = HIP1_Conn_Capabilities.validateCapability(raw)
 
-    this.killTimeout = true
-    if (!result.ok) {
-      this._handshakeReject?.(new Error(`Capability rejected: ${result.reason}`))
-      return false
-    }
+  //   this.killTimeout = true
+  //   if (!result.ok) {
+  //     this._handshakeReject?.(new Error(`Capability rejected: ${result.reason}`))
+  //     return false
+  //   }
 
-    this._peerCapability = result.capability
-    this._handshakeComplete = true
-    this._handshakeResolve?.()
-    return true
-  }
+  //   this._peerCapability = result.capability
+  //   this._handshakeComplete = true
+  //   this._handshakeResolve?.()
+  //   return true
+  // }
 
-  public get handshake(): Promise<void> {
-    return this._handshakePromise
-  }
+  // public get handshake(): Promise<void> {
+  //   return this._handshakePromise
+  // }
 
-  public get peerCapability(): Capability {
-    if (!this._peerCapability) throw new Error('Capability handshake not yet complete')
-    return this._peerCapability
-  }
+  // public get peerCapability(): Capability {
+  //   if (!this._peerCapability) throw new Error('Capability handshake not yet complete')
+  //   return this._peerCapability
+  // }
 
-  public get handshakeComplete(): boolean {
-    return this._handshakeComplete
-  }
+  // public get handshakeComplete(): boolean {
+  //   return this._handshakeComplete
+  // }
 
   public register<T extends Request['type']>(): { nonce: number; promise: Promise<Response<T>> } {
-    if (!this._handshakeComplete) throw new Error('Cannot register request: capability handshake not yet complete')
+    // if (!this._handshakeComplete) throw new Error('Cannot register request: capability handshake not yet complete')
 
     const nonce = ++this.nonce
 
@@ -107,9 +106,9 @@ export class RequestManager {
   }
 
   public close(reason: string = 'Connection closed'): void {
-    this.killTimeout = true
+    // this.killTimeout = true
 
-    if (!this._handshakeComplete) this._handshakeReject?.(new Error(`${reason} before handshake completed`))
+    // if (!this._handshakeComplete) this._handshakeReject?.(new Error(`${reason} before handshake completed`))
 
     for (const [nonce, pending] of this.pending) {
       clearTimeout(pending.timeout)
