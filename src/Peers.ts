@@ -11,6 +11,11 @@ import { discoverPeers } from './networking/dht'
 import type { Request } from './RequestManager';
 import type Node from './Node';
 
+
+const parser = new Parser()
+
+parser.functions.avg = (...args: number[]) => args.reduce((sum, x) => sum + x, 0) / args.length
+
 const avg = (numbers: number[]) => numbers.reduce((accumulator, currentValue) => accumulator + currentValue, 0) / numbers.length
 
 export default class Peers {
@@ -75,8 +80,7 @@ export default class Peers {
       for (const result of peerResults) {
         const hash = BigInt(Bun.hash(JSON.stringify(result)))
         const peerClaimedConfidence = result.confidence
-        const resultConfidence = Parser.evaluate(CONFIG.resultConfidence, { x: peerConfidence, y: peerClaimedConfidence })
-        const finalConfidence = Parser.evaluate(CONFIG.finalConfidence, { x: resultConfidence, y: peer.historicConfidence })
+        const finalConfidence = parser.evaluate(CONFIG.finalConfidence, { x: peerConfidence, y: peerClaimedConfidence, z: peer.historicConfidence })
         results.set(hash, { ...result as Exclude<SearchResult[T], 'confidence'>, confidences: [...results.get(hash)?.confidences ?? [], finalConfidence] })
       }
     }
