@@ -13,8 +13,6 @@ declare module 'bittorrent-dht' {
     port: number;
   }
 
-  export interface DHTPeer extends DHTNode {}
-
   /* -------------------------------------------------- *
    * Options
    * -------------------------------------------------- */

@@ -21,17 +21,24 @@ export class Peer {
   private readonly requestManager: RequestManager
   private readonly HIP2_Conn_Message: HIP2_Conn_Message
   private readonly HIP4_Conn_Announce: HIP4_Conn_Announce
+  private startTime?: number
+  private _rx = 0
+  private _tx = 0
 
   constructor(private readonly node: Node, private readonly socket: WebSocketClient | WebSocketServerConnection, addPeer: (peer: WebSocketClient) => void, crypto: Crypto, onClose: () => void, peers: Peers, private readonly repos: Repositories, private readonly db: DB, public readonly plugins: MetadataPlugin[]) {
     this.requestManager = new RequestManager()
     this.HIP2_Conn_Message = new HIP2_Conn_Message(this, this.requestManager)
     this.HIP4_Conn_Announce = new HIP4_Conn_Announce(crypto, this, addPeer, peers)
     // console.log('LOG:', `Creating peer ${socket.address} as ${socket instanceof WebSocketClient ? 'client' : 'server'}`)
+    this.socket.onOpen(() => {
+      this.startTime = +new Date()
+    })
     this.socket.onClose(() => {
       this.requestManager.close()
       onClose()
     })
     this.socket.onMessage(async message => {
+      this._rx += message.length
       const result = this.HIP2_Conn_Message.parseMessage(message)
       if (!result) return
       const { type, data, nonce } = result
@@ -49,6 +56,18 @@ export class Peer {
 
   get hostname() {
     return this.socket.hostname
+  }
+
+  get uptimeMs() {
+    return this.startTime ? +new Date() - this.startTime : 0
+  }
+
+  get rxTotal() {
+    return this._rx
+  }
+
+  get txTotal() {
+    return this._tx
   }
 
   public readonly announcePeer = (announce: Announce) => this.HIP4_Conn_Announce.sendAnnounce(announce)
@@ -73,14 +92,19 @@ export class Peer {
     return getHistoricPeerConfidence(this.db, this.address, this.plugins)
   }
 
+  get averageLatencyMs(): number {
+    return this.requestManager.averageLatencyMs
+  }
+
   public readonly sendStats = (stats: NodeStats) => this.send(JSON.stringify({ stats }))
 
-  send(msg: string) {
+  send(message: string) {
     if (!this.socket.isOpened) {
       console.warn('WARN:', `[PEER] Cannot send request to unconnected peer ${this.socket.address}`)
       return []
     }
-    this.socket.send(msg)
+    this._tx += message.length
+    this.socket.send(message)
   }
 }
 

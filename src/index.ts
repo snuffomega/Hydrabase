@@ -15,9 +15,9 @@ process.on('uncaughtException', (err) => {
 
 declare global {
   interface Console {
-    error(level: 'ERROR:', message: string, context?: `- ${string}` | Record<string, any>): void;
-    warn(level: 'WARN:', message: string, context?: `- ${string}` | Record<string, any>): void;
-    log(level: 'LOG:', message: string, context?: `- ${string}` | Record<string, any>): void;
+    error(level: 'ERROR:', message: string, context?: `- ${string}` | Record<string, unknown>): void;
+    warn(level: 'WARN:', message: string, context?: `- ${string}` | Record<string, unknown>): void;
+    log(level: 'LOG:', message: string, context?: `- ${string}` | Record<string, unknown>): void;
   }
 }
 

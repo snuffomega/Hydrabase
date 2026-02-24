@@ -24,11 +24,14 @@ type PendingRequest<T extends Request['type']> = {
   resolve: (value: Response<T>) => void
   reject: (reason: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  startedAt: number
 }
 
 export class RequestManager {
   private nonce = -1
   private readonly pending = new Map<number, PendingRequest<Request['type']>>()
+  private totalLatency = 0
+  private resolvedCount = 0
 
   constructor(private readonly timeoutMs: number = 15_000) {}
 
@@ -45,6 +48,7 @@ export class RequestManager {
         resolve: resolve as PendingRequest<Request['type']>['resolve'],
         reject,
         timeout,
+        startedAt: Date.now(),
       })
     })
 
@@ -54,6 +58,10 @@ export class RequestManager {
   public resolve<T extends Request['type']>(nonce: number, response: Response<T>): boolean {
     const pending = this.pending.get(nonce)
     if (!pending) return false
+
+    const latency = Date.now() - pending.startedAt
+    this.totalLatency += latency
+    this.resolvedCount++
 
     clearTimeout(pending.timeout)
     pending.resolve(response as Response<Request['type']>)
@@ -67,5 +75,9 @@ export class RequestManager {
       pending.reject(new Error(`${reason} (nonce: ${nonce})`))
     }
     this.pending.clear()
+  }
+
+  public get averageLatencyMs(): number {
+    return this.resolvedCount === 0 ? 0 : this.totalLatency / this.resolvedCount
   }
 }
