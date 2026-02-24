@@ -13,6 +13,7 @@ export default class WebSocketClient {
   private _isOpened = false
   private messageHandler?: (message: string) => void
   private closeHandler?: () => void
+  private openHandler?: () => void
 
   private constructor(crypto: Crypto, public readonly address: `0x${string}`, public readonly hostname: `ws://${string}`, selfHostname: `ws://${string}`) {
     const headers = HIP3_CONN_Authentication.proveClientAddress(crypto, hostname, selfHostname)
@@ -21,6 +22,7 @@ export default class WebSocketClient {
     this.socket.addEventListener('open', () => {
       console.log('LOG:', `[CLIENT] Connected to peer ${hostname} ${address}`)
       this._isOpened = true
+      this.openHandler?.()
     })
     this.socket.addEventListener('close', ev => {
       console.log('LOG:', `[CLIENT] Connection closed with peer ${address}`, `- ${ev.reason}`)
@@ -64,5 +66,8 @@ export default class WebSocketClient {
   }
   public onClose(handler: () => void) {
     this.closeHandler = () => handler()
+  }
+  public onOpen(handler: () => void) {
+    this.openHandler = () => handler()
   }
 }

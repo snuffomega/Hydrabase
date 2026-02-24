@@ -35,7 +35,7 @@ export class HIP2_Conn_Message {
     return { type, data, nonce }
   }
 
-  static identifyType = (result: any): MessageType | null => // 'capability' in result ? 'capability' :
+  static identifyType = (result: Message): MessageType | null => // 'capability' in result ? 'capability' :
     'request' in result ? 'request'
     : 'response' in result ? 'response'
     : 'announce' in result ? 'announce'

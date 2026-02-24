@@ -16,12 +16,12 @@ declare module 'k-rpc' {
 
   export interface KRPCQuery {
     q: string;
-    a?: Record<string, any>;
+    a?: Record<string, unknown>;
     t?: Buffer;
   }
 
   export interface KRPCResponse {
-    r?: Record<string, any>;
+    r?: Record<string, unknown>;
     e?: [number, string];
     t?: Buffer;
   }
@@ -47,7 +47,7 @@ declare module 'k-rpc' {
     k?: number;
     id?: Buffer;
     idLength?: number;
-    krpcSocket?: any;
+    krpcSocket?: unknown;
   }
 
   /* -------------------------------------------------- *
@@ -56,7 +56,7 @@ declare module 'k-rpc' {
 
   export interface KRPC extends EventEmitter {
     readonly id: Buffer;
-    readonly nodes: any;
+    readonly nodes: unknown;
 
     populate(
       target: Buffer,

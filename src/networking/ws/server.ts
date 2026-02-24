@@ -2,6 +2,8 @@ import { CONFIG } from '../../config'
 import { HIP3_CONN_Authentication } from '../../protocol/HIP3/authentication'
 import { Crypto } from '../../Crypto'
 import { portForward } from '../upnp'
+import { readFileSync } from "fs";
+import { join } from "path";
 
 interface WebSocketData {
   isOpened: boolean
@@ -10,9 +12,12 @@ interface WebSocketData {
   hostname: `ws://${string}`
 }
 
+const version = readFileSync(join(__dirname, "../../../VERSION"), "utf-8").trim();
+
 export class WebSocketServerConnection {
   private messageHandler?: (message: string) => void
   private closeHandler?: () => void
+  private openHandler?: () => void
 
   constructor(private readonly socket: Bun.ServerWebSocket<WebSocketData>) {}
 
@@ -39,13 +44,25 @@ export class WebSocketServerConnection {
   public onClose(handler: () => void) {
     this.closeHandler = handler;
   }
-  _handleMessage(message: string) {
-    this.messageHandler?.(message);
+  public onOpen(handler: () => void) {
+    this.openHandler = handler;
   }
   _handleClose() {
     this.closeHandler?.();
   }
+  _handleOpen() {
+    this.openHandler?.();
+  }
+  _handleMessage(message: string) {
+    this.messageHandler?.(message);
+  }
 }
+
+await Bun.build({
+  entrypoints: ["./dashboard/src/main.tsx"],
+  outdir: "./dist",
+  define: { VERSION: JSON.stringify(version) },
+});
 
 export const startServer = (crypto: Crypto, port: number, addPeer: (conn: WebSocketServerConnection) => void) => {
   portForward(port, 'Hydrabase (TCP)', 'TCP');
@@ -54,6 +71,10 @@ export const startServer = (crypto: Crypto, port: number, addPeer: (conn: WebSoc
     hostname: CONFIG.listenAddress,
     routes: { '/auth': () => HIP3_CONN_Authentication.proveServerAddress(crypto, port) },
     fetch: async (req, server) =>  {
+      const url = new URL(req.url);
+      if (url.pathname === "/src/main.tsx") return new Response(Bun.file(`./dist/main.js`));
+      if (url.pathname === "/dashboard/") return new Response(Bun.file(`./dashboard/index.html`));
+
       const headers = Object.fromEntries(req.headers.entries())
       const address = await HIP3_CONN_Authentication.verifyServerAddress(headers, port)
       if (address instanceof Response) return address
@@ -67,6 +88,7 @@ export const startServer = (crypto: Crypto, port: number, addPeer: (conn: WebSoc
         const conn = new WebSocketServerConnection(ws)
         addPeer(conn)
         ws.data = { ...ws.data, isOpened: true, conn }
+        ws.data.conn?._handleOpen()
       },
       close(ws) {
         ws.data = { ...ws.data, isOpened: false }
