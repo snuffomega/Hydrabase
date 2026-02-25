@@ -27,7 +27,7 @@ interface VoteCounts { tracks: number; artists: number; albums: number }
 interface EventEntry { t: string; lv: string; m: string }
 
 const fmt = (n: number | null | undefined, d = 1): string => n == null ? "—" : Number(n).toFixed(d);
-const fmtBytes = (kb: number): string => kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
+const fmtBytes = (bytes: number): string => bytes > 1024*1024 ? `${(bytes / 1024 / 1024).toFixed(2)}MB` : bytes > 1024 ? `${(bytes / 1024).toFixed(2)}KB` : `${bytes}B`;
 const shortAddr = (a?: string | null): string => a ? `${a.slice(0, 10)}…${a.slice(-6)}` : "—";
 const SC = { connected: "#3fb950", disconnected: "#f85149" } as const
 
