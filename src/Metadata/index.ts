@@ -1,6 +1,5 @@
 import z from 'zod';
 import type { Request } from '../RequestManager'
-import { CONFIG } from '../config';
 import type { Repositories } from '../db';
 
 export const TrackSearchResultSchema = z.object({
@@ -59,7 +58,8 @@ export interface SearchResult {
   track: TrackSearchResult
   artist: ArtistSearchResult
   album: AlbumSearchResult
-  discog: AlbumSearchResult
+  'artist.albums': AlbumSearchResult
+  'artist.tracks': TrackSearchResult
 }
 
 export interface MetadataPlugin {
@@ -67,13 +67,15 @@ export interface MetadataPlugin {
   searchTrack: (query: string) => Promise<TrackSearchResult[]>
   searchArtist: (query: string) => Promise<ArtistSearchResult[]>
   searchAlbum: (query: string) => Promise<AlbumSearchResult[]>
+  lookupAlbums: (id: string) => Promise<AlbumSearchResult[]>
+  lookupTracks: (id: string) => Promise<TrackSearchResult[]>
 }
 
 export default class MetadataManager implements MetadataPlugin {
   public readonly id = 'Hydrabase'
   constructor(private readonly plugins: MetadataPlugin[], private readonly db: Repositories) {}
 
-  private mergeBySoulId<T extends { soul_id: string, address: `0x${string}` }>(primary: T[], secondary: T[]): T[] {
+  private merge<T extends { soul_id: string, address: `0x${string}` }>(primary: T[], secondary: T[]): T[] {
     const seen = new Set(primary.map(r => `${r.soul_id}:${r.address}`))
     return [...primary, ...secondary.filter(r => !seen.has(`${r.soul_id}:${r.address}`))]
   }
@@ -85,7 +87,7 @@ export default class MetadataManager implements MetadataPlugin {
     ])
     const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.track.upsertFromPlugin(result)
-    return this.mergeBySoulId(results, cached)
+    return this.merge(results, cached)
   }
 
   async searchArtist(query: string): Promise<ArtistSearchResult[]> {
@@ -95,7 +97,7 @@ export default class MetadataManager implements MetadataPlugin {
     ])
     const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.artist.upsertFromPlugin(result)
-    return this.mergeBySoulId(results, cached)
+    return this.merge(results, cached)
   }
 
   async searchAlbum(query: string): Promise<AlbumSearchResult[]> {
@@ -105,17 +107,81 @@ export default class MetadataManager implements MetadataPlugin {
     ])
     const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.album.upsertFromPlugin(result)
-    return this.mergeBySoulId(results, cached)
+    return this.merge(results, cached)
   }
 
-  async searchDiscog(artistSoulId: string): Promise<AlbumSearchResult[]> {
-    const results: AlbumSearchResult[] = [];
-    for (const plugin of this.plugins) {
-      const artist = this.db.artist.selectBySoulId(artistSoulId)
-      if (id) results.push(...await plugin.searchDiscog(id))
-    }
+  async lookupAlbums(artistSoulId: string): Promise<AlbumSearchResult[]> {
+    const artists = this.db.artist.lookupBySoulId(artistSoulId)
+    const artistIds = new Map<string, string>()
+    const pluginResults = (await Promise.all(this.plugins.map(p => {
+      const pluginArtists = artists.filter(({ plugin_id }) => plugin_id === p.id)
+      const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
+      if (id) {
+        artistIds.set(p.id, id)
+        return p.lookupAlbums(id)
+      }
+
+      const votes = new Map<string, { peerConfidences: number[], artistConfidences: number[] }>()
+      for (const artist of pluginArtists) {
+        const pastVotes = votes.get(artist.id) ?? { peerConfidences: [], artistConfidences: [] }
+        pastVotes.artistConfidences.push(artist.confidence)
+        pastVotes.peerConfidences.push(1) // TODO: calculate peer score // { address: artist.address }
+        votes.set(artist.id, pastVotes)
+      }
+
+      const artistConfidences = new Map<string, number>()
+      for (const entry of votes) {
+        const [artistId, votes] = entry
+        artistConfidences.set(artistId, computeConfidence(votes.artistConfidences, votes.peerConfidences))
+      }
+      
+      const bestId = artistConfidences.size ? [...artistConfidences.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0] : undefined
+      if (bestId) {
+        artistIds.set(p.id, bestId)
+        return p.lookupAlbums(bestId)
+      }
+    }))).filter(result => result !== undefined) // TODO: weight the confidence in the artist id with track/album confidence
+    const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.album.upsertFromPlugin(result)
-    return results.map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }));
+    const cached = this.db.album.lookupByArtistIds(artistIds)
+    return this.merge(results, cached)
+  }
+
+  async lookupTracks(artistSoulId: string): Promise<TrackSearchResult[]> {
+    const artists = this.db.artist.lookupBySoulId(artistSoulId)
+    const artistIds = new Map<string, string>()
+    const pluginResults = (await Promise.all(this.plugins.map(p => {
+      const pluginArtists = artists.filter(({ plugin_id }) => plugin_id === p.id)
+      const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
+      if (id) {
+        artistIds.set(p.id, id)
+        return p.lookupTracks(id)
+      }
+
+      const votes = new Map<string, { peerConfidences: number[], artistConfidences: number[] }>()
+      for (const artist of pluginArtists) {
+        const pastVotes = votes.get(artist.id) ?? { peerConfidences: [], artistConfidences: [] }
+        pastVotes.artistConfidences.push(artist.confidence)
+        pastVotes.peerConfidences.push(1) // TODO: calculate peer score // { address: artist.address }
+        votes.set(artist.id, pastVotes)
+      }
+
+      const artistConfidences = new Map<string, number>()
+      for (const entry of votes) {
+        const [artistId, votes] = entry
+        artistConfidences.set(artistId, computeConfidence(votes.artistConfidences, votes.peerConfidences))
+      }
+      
+      const bestId = artistConfidences.size ? [...artistConfidences.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0] : undefined
+      if (bestId) {
+        artistIds.set(p.id, bestId)
+        return p.lookupTracks(bestId)
+      }
+    }))).filter(result => result !== undefined) // TODO: weight the confidence in the artist id with track/album confidence
+    const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
+    for (const result of results) this.db.track.upsertFromPlugin(result)
+    const cached = this.db.track.lookupByArtistIds(artistIds)
+    return this.merge(results, cached)
   }
 
   public async handleRequest<T extends Request['type']>(request: Request & { type: T }) {
@@ -123,7 +189,8 @@ export default class MetadataManager implements MetadataPlugin {
     if (request.type === 'track') return await this.searchTrack(request.query)
     if (request.type === 'artist') return await this.searchArtist(request.query)
     if (request.type === 'album') return await this.searchAlbum(request.query)
-    if (request.type === 'discog') return await this.searchDiscog(request.query)
+    if (request.type === 'artist.albums') return await this.lookupAlbums(request.query)
+    if (request.type === 'artist.tracks') return await this.lookupTracks(request.query)
     else {
       console.warn('WARN:', 'Invalid request')
       return []
@@ -132,3 +199,21 @@ export default class MetadataManager implements MetadataPlugin {
 
   public get installedPlugins(): MetadataPlugin[] { return this.plugins }
 }
+
+function computeConfidence(artistConfidences: number[], peerConfidences: number[], k = 1.0): number {
+  if (peerConfidences.length === 0) return 0.5;
+
+  let numerator = 0;
+  let denominator = k;
+
+  for (let i = 0; i < peerConfidences.length; i++) {
+    const signal = (peerConfidences[i]! - 0.5) * 2;
+    numerator += artistConfidences[i]! * signal;
+    denominator += artistConfidences[i]!;
+  }
+
+  const raw = numerator / denominator;
+  return (raw / 2) + 0.5;
+}
+
+// TODO: merge duplicate lookup logic

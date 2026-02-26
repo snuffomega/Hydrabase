@@ -25,9 +25,21 @@ export class ArtistRepository {
     }).onConflictDoNothing().run()
   }
 
-  searchByName(query: string, includePeers = false): (TrackSearchResult & { address: `0x${string}` })[] {
+  searchByName(query: string, includePeers = true): (ArtistSearchResult & { address: `0x${string}` })[] {
     return this.db.select().from(schema.artist)
       .where(and(like(schema.artist.name, `%${query}%`), includePeers ? undefined : eq(schema.artist.address, '0x0')))
+      .all()
+      .map(row => ({
+        ...row,
+        address: row.address as `0x${string}`,
+        genres: row.genres.split(','),
+        external_urls: JSON.parse(row.external_urls),
+      }))
+  }
+
+  lookupBySoulId(soulId: string, includePeers = true): (ArtistSearchResult & { address: `0x${string}` })[] {
+    return this.db.select().from(schema.artist)
+      .where(and(eq(schema.artist.soul_id, soulId), includePeers ? undefined : eq(schema.artist.address, '0x0')))
       .all()
       .map(row => ({
         ...row,

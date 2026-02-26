@@ -55,5 +55,8 @@ const id = setInterval(async () => {
   // /*console.log('LOG:', 'Track results:', */await node.search('track', 'dont stop me now')//);
   // console.log('LOG:', 'Artist results:', artists);
   // /*console.log('LOG:', 'Album results:', */await node.search('album', 'made in england')//);
-  if (artists[0]) console.log(await node.search('discog', artists[0]?.soul_id))
+  if (artists[0]) {
+    console.log(await node.search('artist.tracks', artists[0].soul_id))
+    console.log(await node.search('artist.albums', artists[0].soul_id))
+  }
 }, 5_000)
