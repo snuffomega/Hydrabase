@@ -65,11 +65,11 @@ const spotifyTokenResponseSchema = z.object({
 });
 
 export default class Spotify implements MetadataPlugin { // TODO: 
-  public readonly id = "Spotify";
-  private baseUrl = "https://api.spotify.com/v1/search";
-  private tokenUrl = "https://accounts.spotify.com/api/token";
-  private accessToken: string | null = null;
-  private tokenExpiry: number = 0;
+  public readonly id = "Spotify"
+  private baseUrl = "https://api.spotify.com/v1/search"
+  private tokenUrl = "https://accounts.spotify.com/api/token"
+  private accessToken: string | null = null
+  private tokenExpiry = 0
 
   constructor(
     private clientId: string,
