@@ -9,33 +9,53 @@ export const AuthSchema = z.object({
 })
 
 export default class WebSocketClient {
-  private readonly socket: WebSocket
+  private socket!: WebSocket
   private _isOpened = false
   private messageHandler?: (message: string) => void
   private closeHandler?: () => void
   private openHandler?: () => void
+  private _retryQueue: Array<() => void> = []
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private _reconnectDelay = 1000
+  private readonly _maxReconnectDelay = 30000
 
-  private constructor(crypto: Crypto, public readonly address: `0x${string}`, public readonly hostname: `ws://${string}`, selfHostname: `ws://${string}`) {
-    // TODO: retry queue
-    const headers = HIP3_CONN_Authentication.proveClientAddress(crypto, hostname, selfHostname)
-    console.log('LOG:', `[CLIENT] Connecting to server ${hostname}`)
-    this.socket = new WebSocket(hostname, { headers })
+  private constructor(
+    crypto: Crypto,
+    public readonly address: `0x${string}`,
+    public readonly hostname: `ws://${string}`,
+    private readonly selfHostname: `ws://${string}`
+  ) {
+    this._connect(crypto)
+  }
+
+  private _connect(crypto: Crypto) {
+    const headers = HIP3_CONN_Authentication.proveClientAddress(crypto, this.hostname, this.selfHostname)
+    console.log('LOG:', `[CLIENT] Connecting to server ${this.hostname}`)
+    this.socket = new WebSocket(this.hostname, { headers })
+
     this.socket.addEventListener('open', () => {
-      console.log('LOG:', `[CLIENT] Connected to server ${hostname} ${address}`)
+      console.log('LOG:', `[CLIENT] Connected to server ${this.hostname} ${this.address}`)
       this._isOpened = true
+      this._reconnectDelay = 1000 // reset backoff on success
+      this._flushQueue()
       this.openHandler?.()
     })
+
     this.socket.addEventListener('close', ev => {
-      console.log('LOG:', `[CLIENT] Connection closed with server ${hostname} ${address}`, `- ${ev.reason}`)
+      console.log('LOG:', `[CLIENT] Connection closed with server ${this.hostname} ${this.address}`, `- ${ev.reason}`)
       this._isOpened = false
       this.closeHandler?.()
+      this._scheduleReconnect(crypto)
     })
+
     this.socket.addEventListener('error', err => {
-      console.warn('WARN:', `[CLIENT] Connection failed with server ${hostname} ${address}`, err)
+      console.warn('WARN:', `[CLIENT] Connection failed with server ${this.hostname} ${this.address}`, err)
       this._isOpened = false
       this.closeHandler?.()
+      // close event fires after error, so reconnect is handled there
     })
-    this.socket.addEventListener('message', message => this.messageHandler?.(message.data));
+
+    this.socket.addEventListener('message', message => this.messageHandler?.(message.data))
   }
 
   static readonly init = async (crypto: Crypto, hostname: `ws://${string}`, selfHostname: `ws://${string}`, peers: Peers) => {
@@ -52,14 +72,37 @@ export default class WebSocketClient {
     return new WebSocketClient(crypto, address, hostname, selfHostname)
   }
 
-  public readonly close = () => this.socket.close()
+  private _scheduleReconnect(crypto: Crypto) {
+    if (this._reconnectTimer) return
+    console.log('LOG:', `[CLIENT] Reconnecting to ${this.address} ${this.hostname} in ${this._reconnectDelay}ms...`)
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null
+      this._connect(crypto)
+    }, this._reconnectDelay)
+    this._reconnectDelay = Math.min(this._reconnectDelay * 2, this._maxReconnectDelay)
+  }
+
+  private _flushQueue() {
+    const queue = this._retryQueue.splice(0)
+    for (const fn of queue) fn()
+  }
+
+  public readonly close = () => {
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer)
+      this._reconnectTimer = null
+    }
+    this._retryQueue = []
+    this.socket.close()
+  }
 
   get isOpened() {
     return this._isOpened
   }
 
-  public readonly send = (data: string) => {
-    if (this.isOpened) this.socket.send(data)
+  send(data: string) {
+    if (this._isOpened) this.socket.send(data)
+    else this._retryQueue.push(() => this.socket.send(data))
   }
 
   public onMessage(handler: (message: string) => void) {
