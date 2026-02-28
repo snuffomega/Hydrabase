@@ -114,7 +114,7 @@ export default class MetadataManager implements MetadataPlugin {
   async lookupAlbums(artistSoulId: string, peers: Peers): Promise<AlbumSearchResult[]> {
     const artists = this.db.artist.lookupBySoulId(artistSoulId)
     const artistIds = new Map<string, string>()
-    const pluginResults = (await Promise.all(this.plugins.map(p => {
+    const pluginResults = (await Promise.all(this.plugins.map(async p => {
       const pluginArtists = artists.filter(({ plugin_id }) => plugin_id === p.id)
       const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
       if (id) {
@@ -124,10 +124,10 @@ export default class MetadataManager implements MetadataPlugin {
 
       const bestId = matchArtistId(pluginArtists, peers)
       if (bestId) {
-        artistIds.set(p.id, bestId)
-        return p.lookupAlbums(bestId, peers)
+        artistIds.set(p.id, bestId.id)
+        return (await p.lookupAlbums(bestId.id, peers)).map(album => ({ ...album, confidence: (album.confidence+bestId.confidence)/2 }))
       }
-    }))).filter(result => result !== undefined) // TODO: weight the confidence in the artist id with track/album confidence
+    }))).filter(result => result !== undefined)
     const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.album.upsertFromPlugin(result)
     const cached = this.db.album.lookupByArtistIds(artistIds)
@@ -137,7 +137,7 @@ export default class MetadataManager implements MetadataPlugin {
   async lookupTracks(artistSoulId: string, peers: Peers): Promise<TrackSearchResult[]> {
     const artists = this.db.artist.lookupBySoulId(artistSoulId)
     const artistIds = new Map<string, string>()
-    const pluginResults = (await Promise.all(this.plugins.map(p => {
+    const pluginResults = (await Promise.all(this.plugins.map(async p => {
       const pluginArtists = artists.filter(({ plugin_id }) => plugin_id === p.id)
       const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
       if (id) {
@@ -147,10 +147,10 @@ export default class MetadataManager implements MetadataPlugin {
 
       const bestId = matchArtistId(pluginArtists, peers)
       if (bestId) {
-        artistIds.set(p.id, bestId)
-        return p.lookupTracks(bestId, peers)
+        artistIds.set(p.id, bestId.id)
+        return (await p.lookupTracks(bestId.id, peers)).map(track => ({ ...track, confidence: (track.confidence+bestId.confidence)/2 }))
       }
-    }))).filter(result => result !== undefined) // TODO: weight the confidence in the artist id with track/album confidence
+    }))).filter(result => result !== undefined)
     const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
     for (const result of results) this.db.track.upsertFromPlugin(result)
     const cached = this.db.track.lookupByArtistIds(artistIds)
@@ -173,7 +173,7 @@ export default class MetadataManager implements MetadataPlugin {
   public get installedPlugins(): MetadataPlugin[] { return this.plugins }
 }
 
-const matchArtistId = (pluginArtists: (ArtistSearchResult & { address: `0x${string}` })[], peers: Peers) => {
+const matchArtistId = (pluginArtists: (ArtistSearchResult & { address: `0x${string}` })[], peers: Peers): { id: string, confidence: number } | undefined => {
   const votes = new Map<string, { peerConfidences: number[], artistConfidences: number[] }>()
   for (const artist of pluginArtists) {
     const pastVotes = votes.get(artist.id) ?? { peerConfidences: [], artistConfidences: [] }
@@ -188,7 +188,8 @@ const matchArtistId = (pluginArtists: (ArtistSearchResult & { address: `0x${stri
     artistConfidences.set(artistId, computeConfidence(votes.artistConfidences, votes.peerConfidences))
   }
 
-  return artistConfidences.size ? [...artistConfidences.entries()].reduce((a, b) => b[1] > a[1] ? b : a)[0] : undefined
+  const id = artistConfidences.size ? [...artistConfidences.entries()].reduce((a, b) => b[1] > a[1] ? b : a) : undefined
+  return id ? { id: id[0], confidence: id[1] } : undefined
 }
 
 const computeConfidence = (artistConfidences: number[], peerConfidences: number[], k = 1.0): number => {
