@@ -33,11 +33,12 @@ const metadataManager = new MetadataManager([new ITunes(), ... SPOTIFY_CLIENT_ID
 // Start Node
 const node = new Node(CONFIG.serverPort, CONFIG.dhtPort, new Crypto(await getPrivateKey()), metadataManager, repos, db)
 
-await new Promise(res => setTimeout(res, 10_000))
-
+let i = 0
 const id = setInterval(async () => {
   if (node.peerCount === 0) {
-    console.warn('WARN:', 'Waiting for connections')
+    if (i === 0) console.log('LOG:', 'Waiting to connect to peers')
+    if (i > 12) console.warn('WARN:', 'Taking a while to find peers to connect to')
+    i++
     return
   }
   clearInterval(id)
