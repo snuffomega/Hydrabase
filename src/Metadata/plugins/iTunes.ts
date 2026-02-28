@@ -213,18 +213,17 @@ export default class ITunes implements MetadataPlugin {
   }
 
   async lookupAlbums(id: string): Promise<AlbumSearchResult[]> {
-    console.log('bbbbbb', id, typeof id, id.length)
     const params = new URLSearchParams({
       id,
-      // country: this.country,
-      // media: 'music',
+      country: this.country,
+      media: 'music',
       entity: 'album',
-      // limit: this.limit.toString(),
+      limit: this.limit.toString(),
     });
 
     const response = await fetch(`${this.baseUrl}lookup?${params.toString()}`);
     const data = await response.json();
-    console.log('aaaaa', data)
+    data.results = data.results.filter(result => result.wrapperType === 'album')
     const parsed = iTunesAlbumLookupResponseSchema.safeParse(data);
     if (!parsed.success) throw new Error(`Invalid iTunes API response: ${parsed.error}`);
 
