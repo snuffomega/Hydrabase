@@ -28,7 +28,6 @@ services:
       # Use `openssl rand -hex 16` to generate an api key
       # API_KEY: $API_KEY
       # Used for testing
-      # DUMMY_NODES: 0
 ```
 
 ### Manual
