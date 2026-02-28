@@ -18,7 +18,7 @@ const announce = (dht: DHT, port: number) => {
   dht.lookup(room, err => { if (err) console.error('ERROR:', 'DHT threw an error during lookup', err) })
 }
 
-export const discoverPeers = (serverPort: number, dhtPort: number, addPeer: (peer: WebSocketClient) => void, crypto: Crypto, peers: Peers) => {
+export const discoverPeers = (serverPort: number, dhtPort: number, crypto: Crypto, peers: Peers) => {
   portForward(dhtPort, 'Hydrabase (UDP)', 'UDP');
   const dht = new DHT({
     krpc: krpc(),
@@ -40,7 +40,7 @@ export const discoverPeers = (serverPort: number, dhtPort: number, addPeer: (pee
   let lastNodes = 0
   dht.on('node', () => {
     const nodes = dht.toJSON().nodes.length
-    if (nodes % 10 === 0 && nodes !== lastNodes) {
+    if (nodes % 25 === 0 && nodes !== lastNodes) {
       console.log('LOG:', `[DHT] Connected to ${nodes} nodes`)
       lastNodes = nodes
     }
@@ -54,7 +54,7 @@ export const discoverPeers = (serverPort: number, dhtPort: number, addPeer: (pee
     console.log('LOG:', `[DHT] Discovered peer ws://${peer.host}:${peer.port}`)
     const client = await WebSocketClient.init(crypto, `ws://${peer.host}:${peer.port}`, `ws://${CONFIG.serverHostname}:${serverPort}`, peers)
     if (client === false) return
-    addPeer(client)
+    peers.add(client)
   })
   dht.on('announce', async (peer, _infoHash) => {
     if (_infoHash.toString('hex') !== getRoomId()) return
@@ -63,7 +63,7 @@ export const discoverPeers = (serverPort: number, dhtPort: number, addPeer: (pee
     console.log('LOG:', `[DHT] Received announce from ws://${peer.host}:${peer.port}`)
     const client = await WebSocketClient.init(crypto, `ws://${peer.host}:${peer.port}`, `ws://${CONFIG.serverHostname}:${serverPort}`, peers)
     if (client === false) return
-    addPeer(client)
+    peers.add(client)
     knownPeers.add(`${peer.host}:${peer.port}`)
   })
 
