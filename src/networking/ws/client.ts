@@ -17,6 +17,7 @@ export default class WebSocketClient {
   private retryQueue: Array<() => void> = []
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
+  private dontReconnect = false
 
   private constructor(crypto: Crypto, public readonly address: `0x${string}`, public readonly hostname: `ws://${string}`, private readonly selfHostname: `ws://${string}`, private readonly peers: Peers) {
     this._connect(crypto)
@@ -54,22 +55,22 @@ export default class WebSocketClient {
     const address = await HIP3_CONN_Authentication.verifyClientAddress(hostname)
     if (!address) return false
     if (peers.has(address)) {
-      console.warn('WARN:', `[CLIENT] Already connected/connecting to peer ${address}`)
+      // console.warn('WARN:', `[CLIENT] Already connected/connecting to peer ${address}`)
       return false
     }
     if (address === crypto.address) {
-      console.warn('WARN:', `[CLIENT] Not connecting to self`)
+      // console.warn('WARN:', `[CLIENT] Not connecting to self`)
       return false
     }
     return new WebSocketClient(crypto, address, hostname, selfHostname, peers)
   }
 
   private _scheduleReconnect(crypto: Crypto) {
-    console.log('Scheduling reconnect')
     if (this.reconnectTimer) return
+    console.log('Scheduling reconnect')
     console.log('LOG:', `[CLIENT] Reconnecting to ${this.address} ${this.hostname} in ${this.reconnectAttempts*5_000}ms...`)
     this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null
+      if (this.dontReconnect) return
       this._connect(crypto)
     }, this.reconnectAttempts*5_000)
     this.reconnectAttempts++
@@ -81,12 +82,9 @@ export default class WebSocketClient {
   }
 
   public readonly close = () => {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
     this.retryQueue = []
     this.socket.close()
+    this.dontReconnect = true
   }
 
   get isOpened() {

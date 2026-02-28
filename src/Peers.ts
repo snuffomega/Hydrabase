@@ -22,8 +22,8 @@ export default class Peers {
   private readonly peers: { [address: `0x${string}`]: Peer } = {}
 
   constructor(private readonly node: Node, public readonly serverPort: number, dhtPort: number, private readonly crypto: Crypto, private readonly metadataManager: MetadataManager, private readonly repos: Repositories, private readonly db: DB) {
-    startServer(crypto, serverPort, peer => this.add(peer))
-    const dht = discoverPeers(serverPort, dhtPort, peer => this.add(peer), crypto, this)
+    startServer(crypto, serverPort, this)
+    const dht = discoverPeers(serverPort, dhtPort, crypto, this)
     new StatsReporter(crypto.address, metadataManager.installedPlugins, () => this.peers, db, dht)
 
     cacheFile.exists().then(exists => {
@@ -42,7 +42,10 @@ export default class Peers {
   public add(socket: WebSocketClient | WebSocketServerConnection) {
     const peer = new Peer(this.node, socket, peer => this.add(peer), this.crypto, () => { delete this.peers[socket.address] }, this, this.repos, this.db, this.metadataManager.installedPlugins)
     if (socket.address in this.peers) {
-      if (socket.address !== '0x0') socket.close()
+      if (socket.address !== '0x0') {
+        console.warn('WARN:', `Tried to connect to existing peer again via ${socket instanceof WebSocketClient ? 'client' : 'server'} ${socket.address} ${socket.hostname}`)
+        socket.close()
+      }
       return
     }
     this.peers[socket.address] = peer
