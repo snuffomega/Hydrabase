@@ -1,20 +1,21 @@
-import { BunSQLiteDatabase, drizzle } from 'drizzle-orm/bun-sqlite'
 import { Database } from 'bun:sqlite'
+import { BunSQLiteDatabase, drizzle } from 'drizzle-orm/bun-sqlite'
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { schema } from './schema';
+import fs from 'fs';
+
 import { AlbumRepository } from './repositories/AlbumRepository';
 import { ArtistRepository } from './repositories/ArtistRepository';
 import { TrackRepository } from './repositories/TrackRepository';
-import fs from 'fs';
+import { schema } from './schema';
 
-if (!(await Bun.file('data').exists())) fs.mkdirSync('data', { recursive: true })
+if (!(await Bun.file('data').exists())) {fs.mkdirSync('data', { recursive: true })}
 const sqlite = new Database('data/db.sqlite')
 
 export type DB = BunSQLiteDatabase<typeof schema>
 export interface Repositories {
-  track: TrackRepository
   album: AlbumRepository
   artist: ArtistRepository
+  track: TrackRepository
 }
 
 export const startDatabase = (): { db: DB, repos: Repositories } => {
@@ -23,9 +24,9 @@ export const startDatabase = (): { db: DB, repos: Repositories } => {
   return {
     db,
     repos: {
-      track: new TrackRepository(db),
       album: new AlbumRepository(db),
-      artist: new ArtistRepository(db)
+      artist: new ArtistRepository(db),
+      track: new TrackRepository(db)
     }
   }
 }

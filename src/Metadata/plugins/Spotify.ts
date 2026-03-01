@@ -1,40 +1,41 @@
 import { z } from "zod"
+
 import type { AlbumSearchResult, ArtistSearchResult, MetadataPlugin, TrackSearchResult } from ".."
 
 const spotifyTrackSchema = z.object({
+  album: z.object({
+    images: z.array(z.object({ height: z.number().optional(), url: z.url(), width: z.number().optional() })),
+    name: z.string(),
+  }),
+  artists: z.array(z.object({ name: z.string() })),
+  duration_ms: z.number(),
+  external_urls: z.object({ spotify: z.url() }),
   id: z.string(),
   name: z.string(),
-  artists: z.array(z.object({ name: z.string() })),
-  album: z.object({
-    name: z.string(),
-    images: z.array(z.object({ url: z.url(), height: z.number().optional(), width: z.number().optional() })),
-  }),
-  duration_ms: z.number(),
   popularity: z.number(),
   preview_url: z.url().nullable().optional(),
-  external_urls: z.object({ spotify: z.url() }),
 })
 
 const spotifyArtistSchema = z.object({
+  external_urls: z.object({ spotify: z.url() }),
+  followers: z.object({ total: z.number() }),
+  genres: z.array(z.string()),
   id: z.string(),
+  images: z.array(z.object({ height: z.number().optional(), url: z.url(), width: z.number().optional() })),
   name: z.string(),
   popularity: z.number(),
-  genres: z.array(z.string()),
-  followers: z.object({ total: z.number() }),
-  images: z.array(z.object({ url: z.url(), height: z.number().optional(), width: z.number().optional() })),
-  external_urls: z.object({ spotify: z.url() }),
 })
 
 const spotifyAlbumSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+  album_type: z.string(),
   artists: z.array(z.object({ name: z.string() })),
+  external_urls: z.object({ spotify: z.url() }),
+  id: z.string(),
+  images: z.array(z.object({ height: z.number().optional(), url: z.url(), width: z.number().optional() })),
+  name: z.string(),
   release_date: z.string(),
   release_date_precision: z.enum(['year', 'month', 'day']).optional(),
   total_tracks: z.number(),
-  album_type: z.string(),
-  images: z.array(z.object({ url: z.url(), height: z.number().optional(), width: z.number().optional() })),
-  external_urls: z.object({ spotify: z.url() }),
 })
 
 export const spotifySearchResponseSchema = z.object({
@@ -60,187 +61,31 @@ export const spotifyAlbumSearchResponseSchema = z.object({
 
 const spotifyTokenResponseSchema = z.object({
   access_token: z.string(),
-  token_type: z.literal('Bearer'),
   expires_in: z.number(),
+  token_type: z.literal('Bearer'),
 })
 
 export default class Spotify implements MetadataPlugin {
   public readonly id = "Spotify"
+  private accessToken: null | string = null
   private baseUrl = "https://api.spotify.com/v1/"
-  private tokenUrl = "https://accounts.spotify.com/api/token"
-  private accessToken: string | null = null
   private tokenExpiry = 0
+  private tokenUrl = "https://accounts.spotify.com/api/token"
 
   constructor(
-    private clientId: string,
-    private clientSecret: string,
-    private market: string = "US",
-    private limit: number = 50
+    private keys: { clientId: string, clientSecret: string },
+    private market = "US",
+    private limit = 50
   ) {
-    if (limit > 50) throw new Error("Maximum limit is 50")
-  }
-
-  private async authenticate(): Promise<string> {
-    if (this.accessToken && Date.now() < this.tokenExpiry) {
-      return this.accessToken
-    }
-
-    const response = await fetch(this.tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${btoa(`${this.clientId}:${this.clientSecret}`)}`,
-      },
-      body: new URLSearchParams({ grant_type: "client_credentials" }),
-    })
-
-    const data = await response.json()
-    const parsed = spotifyTokenResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify token response: ${parsed.error}`)
-
-    this.accessToken = parsed.data.access_token
-    this.tokenExpiry = Date.now() + parsed.data.expires_in * 1000 - 60_000 // refresh 1min early
-
-    return this.accessToken
-  }
-
-  async searchTrack(term: string): Promise<TrackSearchResult[]> {
-    const token = await this.authenticate()
-
-    const params = new URLSearchParams({
-      q: term,
-      type: "track",
-      market: this.market,
-      limit: this.limit.toString(),
-    })
-
-    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    const data = await response.json()
-    const parsed = spotifySearchResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify API response: ${parsed.error}`)
-
-    return parsed.data.tracks.items.map((track) => ({
-      soul_id: 'soul_', // Ignored
-      id: track.id,
-      name: track.name,
-      artists: track.artists.map((a) => a.name),
-      album: track.album.name,
-      duration_ms: track.duration_ms,
-      popularity: track.popularity,
-      preview_url: track.preview_url ?? "",
-      external_urls: track.external_urls,
-      image_url: track.album.images[0]?.url ?? "",
-      plugin_id: this.id,
-      confidence: 1,
-    }))
-  }
-
-  async searchArtist(term: string): Promise<ArtistSearchResult[]> {
-    const token = await this.authenticate()
-
-    const params = new URLSearchParams({
-      q: term,
-      type: "artist",
-      market: this.market,
-      limit: this.limit.toString(),
-    })
-
-    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    const data = await response.json()
-    const parsed = spotifyArtistSearchResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify API response: ${parsed.error}`)
-
-    return parsed.data.artists.items.map((artist) => ({
-      soul_id: 'soul_', // Ignored
-      id: artist.id,
-      name: artist.name,
-      popularity: artist.popularity,
-      genres: artist.genres,
-      followers: artist.followers.total,
-      image_url: artist.images[0]?.url ?? '',
-      external_urls: artist.external_urls,
-      plugin_id: this.id,
-      confidence: 1,
-    }))
-  }
-
-  async searchAlbum(term: string): Promise<AlbumSearchResult[]> {
-    const token = await this.authenticate()
-
-    const params = new URLSearchParams({
-      q: term,
-      type: "album",
-      market: this.market,
-      limit: this.limit.toString(),
-    })
-
-    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    const data = await response.json()
-    const parsed = spotifyAlbumSearchResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify API response: ${parsed.error}`)
-
-    return parsed.data.albums.items.map((album) => ({
-      soul_id: 'soul_', // Ignored
-      id: album.id,
-      name: album.name,
-      artists: album.artists.map((a) => a.name),
-      release_date: album.release_date,
-      total_tracks: album.total_tracks,
-      album_type: album.album_type,
-      image_url: album.images[0]?.url ?? "",
-      external_urls: album.external_urls,
-      plugin_id: this.id,
-      confidence: 1,
-    }))
-  }
-
-  async lookupTracks(id: string): Promise<TrackSearchResult[]> {
-    const token = await this.authenticate()
-
-    const params = new URLSearchParams({
-      market: this.market,
-      limit: this.limit.toString(),
-    })
-
-    const response = await fetch(`${this.baseUrl}artists/${id}/tracks?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    const data = await response.json()
-    const parsed = spotifySearchResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify API response: ${parsed.error}`)
-
-    return parsed.data.tracks.items.map((track) => ({
-      soul_id: 'soul_', // Ignored
-      id: track.id,
-      name: track.name,
-      artists: track.artists.map((a) => a.name),
-      album: track.album.name,
-      duration_ms: track.duration_ms,
-      popularity: track.popularity,
-      preview_url: track.preview_url ?? "",
-      external_urls: track.external_urls,
-      image_url: track.album.images[0]?.url ?? "",
-      plugin_id: this.id,
-      confidence: 1,
-    }))
+    if (limit > 50) {throw new Error("Maximum limit is 50")}
   }
 
   async lookupAlbums(id: string): Promise<AlbumSearchResult[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
-      market: this.market,
       limit: this.limit.toString(),
+      market: this.market,
     })
 
     const response = await fetch(`${this.baseUrl}artists/${id}/albums?${params.toString()}`, {
@@ -249,20 +94,175 @@ export default class Spotify implements MetadataPlugin {
 
     const data = await response.json()
     const parsed = spotifyAlbumSearchResponseSchema.safeParse(data)
-    if (!parsed.success) throw new Error(`Invalid Spotify API response: ${parsed.error}`)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.albums.items.map((album) => ({
-      soul_id: 'soul_', // Ignored
-      id: album.id,
-      name: album.name,
-      artists: album.artists.map((a) => a.name),
-      release_date: album.release_date,
-      total_tracks: album.total_tracks,
       album_type: album.album_type,
-      image_url: album.images[0]?.url ?? "",
-      external_urls: album.external_urls,
-      plugin_id: this.id,
+      artists: album.artists.map((a) => a.name),
       confidence: 1,
+      external_urls: album.external_urls,
+      id: album.id,
+      image_url: album.images[0]?.url ?? "",
+      name: album.name,
+      plugin_id: this.id,
+      release_date: album.release_date,
+      soul_id: 'soul_', // Ignored
+      total_tracks: album.total_tracks,
     }))
+  }
+
+  async lookupTracks(id: string): Promise<TrackSearchResult[]> {
+    const token = await this.authenticate()
+
+    const params = new URLSearchParams({
+      limit: this.limit.toString(),
+      market: this.market,
+    })
+
+    const response = await fetch(`${this.baseUrl}artists/${id}/tracks?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await response.json()
+    const parsed = spotifySearchResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
+
+    return parsed.data.tracks.items.map((track) => ({
+      album: track.album.name,
+      artists: track.artists.map((a) => a.name),
+      confidence: 1,
+      duration_ms: track.duration_ms,
+      external_urls: track.external_urls,
+      id: track.id,
+      image_url: track.album.images[0]?.url ?? "",
+      name: track.name,
+      plugin_id: this.id,
+      popularity: track.popularity,
+      preview_url: track.preview_url ?? "",
+      soul_id: 'soul_', // Ignored
+    }))
+  }
+
+  async searchAlbum(term: string): Promise<AlbumSearchResult[]> {
+    const token = await this.authenticate()
+
+    const params = new URLSearchParams({
+      limit: this.limit.toString(),
+      market: this.market,
+      q: term,
+      type: "album",
+    })
+
+    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await response.json()
+    const parsed = spotifyAlbumSearchResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
+
+    return parsed.data.albums.items.map((album) => ({
+      album_type: album.album_type,
+      artists: album.artists.map((a) => a.name),
+      confidence: 1,
+      external_urls: album.external_urls,
+      id: album.id,
+      image_url: album.images[0]?.url ?? "",
+      name: album.name,
+      plugin_id: this.id,
+      release_date: album.release_date,
+      soul_id: 'soul_', // Ignored
+      total_tracks: album.total_tracks,
+    }))
+  }
+
+  async searchArtist(term: string): Promise<ArtistSearchResult[]> {
+    const token = await this.authenticate()
+
+    const params = new URLSearchParams({
+      limit: this.limit.toString(),
+      market: this.market,
+      q: term,
+      type: "artist",
+    })
+
+    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await response.json()
+    const parsed = spotifyArtistSearchResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
+
+    return parsed.data.artists.items.map((artist) => ({
+      confidence: 1,
+      external_urls: artist.external_urls,
+      followers: artist.followers.total,
+      genres: artist.genres,
+      id: artist.id,
+      image_url: artist.images[0]?.url ?? '',
+      name: artist.name,
+      plugin_id: this.id,
+      popularity: artist.popularity,
+      soul_id: 'soul_', // Ignored
+    }))
+  }
+
+  async searchTrack(term: string): Promise<TrackSearchResult[]> {
+    const token = await this.authenticate()
+
+    const params = new URLSearchParams({
+      limit: this.limit.toString(),
+      market: this.market,
+      q: term,
+      type: "track",
+    })
+
+    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await response.json()
+    const parsed = spotifySearchResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
+
+    return parsed.data.tracks.items.map((track) => ({
+      album: track.album.name,
+      artists: track.artists.map((a) => a.name),
+      confidence: 1,
+      duration_ms: track.duration_ms,
+      external_urls: track.external_urls,
+      id: track.id,
+      image_url: track.album.images[0]?.url ?? "",
+      name: track.name,
+      plugin_id: this.id,
+      popularity: track.popularity,
+      preview_url: track.preview_url ?? "",
+      soul_id: 'soul_', // Ignored
+    }))
+  }
+
+  private async authenticate(): Promise<string> {
+    if (this.accessToken && Date.now() < this.tokenExpiry) {
+      return this.accessToken
+    }
+
+    const response = await fetch(this.tokenUrl, {
+      body: new URLSearchParams({ grant_type: "client_credentials" }),
+      headers: {
+        Authorization: `Basic ${btoa(`${this.keys.clientId}:${this.keys.clientSecret}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    })
+
+    const data = await response.json()
+    const parsed = spotifyTokenResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify token response: ${parsed.error}`)}
+
+    this.accessToken = parsed.data.access_token
+    this.tokenExpiry = Date.now() + parsed.data.expires_in * 1000 - 60_000 // Refresh 1min early
+
+    return this.accessToken
   }
 }

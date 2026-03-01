@@ -1,34 +1,46 @@
+import type { Account } from "../../Crypto/Account";
+
 import { CONFIG } from "../../config";
-import { AuthSchema } from "../../networking/ws/client";
-import { Crypto, Signature } from "../../Crypto";
+import { Signature } from "../../Crypto/Signature";
 import { log, warn } from "../../log";
+import { AuthSchema } from "../../networking/ws/client";
 
 type Auth =
+  | { apiKey: string; signature: Signature }
   | { apiKey: string; signature?: undefined }
   | { apiKey?: undefined; signature: Signature }
-  | { apiKey: string; signature: Signature }
 
 const prove = {
-  server: {
-    address: (crypto: Crypto, port: number) => new Response(JSON.stringify({
-      signature: crypto.sign(`I am ws://${CONFIG.serverHostname}:${port}`).toString(),
-      address: crypto.address
-    }))
-  },
   client: {
-    address: (crypto: Crypto, peerHostname: `ws://${string}`, selfHostname: `ws://${string}`) => ({
-      'x-signature': crypto.sign(`I am connecting to ${peerHostname}`).toString(),
-      'x-address': crypto.address,
-      "x-hostname": selfHostname
+    address: (account: Account, peerHostname: `ws://${string}`) => ({
+      'x-address': account.address,
+      "x-hostname": `ws://${CONFIG.serverHostname}:${CONFIG.serverPort}`,
+      'x-signature': account.sign(`I am connecting to ${peerHostname}`).toString()
     })
+  },
+  server: {
+    address: (account: Account, port: number) => new Response(JSON.stringify({
+      address: account.address,
+      signature: account.sign(`I am ws://${CONFIG.serverHostname}:${port}`).toString()
+    }))
   }
+}
+
+const verifyAuth = (auth: Auth | undefined, address: string | undefined): [number, string] | true => {
+  if (!auth) return [400, 'Missing authentication']
+  if (auth.apiKey && auth.apiKey !== CONFIG.apiKey) return [401, 'Invalid API key']
+  else if (auth.signature) {
+    if (!address) return [400, 'Missing address header']
+    if (!auth.signature.verify(`I am connecting to ws://${CONFIG.serverHostname}:${CONFIG.serverPort}`, address)) return [403, 'Authentication failed']
+  }
+  return true
 }
 
 const verify = {
   client: {
     address: async (hostname: `ws://${string}`) => {
       log('LOG:', `[HIP3] Verifying server address ${hostname}`)
-      const res = await fetch(hostname.replace('ws://', 'http://') + '/auth')
+      const res = await fetch(`${hostname.replace('ws://', 'http://')  }/auth`)
       const data = await res.text()
       const auth = AuthSchema.parse(JSON.parse(data))
       const signature = Signature.fromString(auth.signature)
@@ -40,14 +52,9 @@ const verify = {
     }
   },
   server: {
-    address: async (headers: { [k: string]: string }, listenPort: number): Promise<`0x${string}` | Response> => {
+    address: (headers: Record<string, string>): `0x${string}` | Response => {
       log('LOG:', `[HIP3] Verifying client address`)
-      const {
-        'x-api-key': _apiKey,
-        'x-signature': _signature,
-        'x-address': address,
-        'sec-websocket-protocol': protocol
-      } = headers
+      const { 'sec-websocket-protocol': protocol, 'x-address': address, 'x-api-key': _apiKey, 'x-signature': _signature } = headers
       const signature = _signature ? Signature.fromString(_signature) : undefined
 
       const keyProto = protocol?.split(',').map(s => s.trim()).find(s => s.startsWith('x-api-key-'))
@@ -55,38 +62,34 @@ const verify = {
 
       const auth = apiKey !== undefined || signature !== undefined ? { apiKey, signature } as Auth : undefined
 
-      if (!auth) return new Response('Missing authentication', { status: 400 })
-      if (auth.apiKey && auth.apiKey !== CONFIG.apiKey) return new Response('Invalid API key', { status: 401 })
-      else if (auth.signature) {
-        if (!address) return new Response('Missing address header', { status: 400 })
-        if (!auth.signature.verify(`I am connecting to ws://${CONFIG.serverHostname}:${listenPort}`, address)) return new Response('Authentication failed', { status: 403 })
-      }
+      const res = verifyAuth(auth, address)
+      if (res !== true) return new Response(res[1], { status: res[0] })
 
       return address as `0x${string}` ?? '0x0'
     },
-    hostname: async (headers: { [k: string]: string }, address: `0x${string}`): Promise<Response | `ws://${string}`> => {
+    hostname: async (headers: Record<string, string>, address: `0x${string}`): Promise<`ws://${string}` | Response> => {
       log('LOG:', `[HIP3] Verifying client hostname ${address}`)
-      if (address === '0x0') return 'ws://'
+      if (address === '0x0') {return 'ws://'}
       const hostname = headers['x-hostname']
-      if (!hostname) return new Response('Missing hostname header', { status: 400 })
-      const data = await (await fetch(hostname.replace('ws://', 'http://') + '/auth')).text()
-      if (!Signature.fromString(AuthSchema.parse(JSON.parse(data)).signature).verify(`I am ${hostname}`, address)) return new Response('Invalid authentication from your server', { status: 401 })
+      if (!hostname) {return new Response('Missing hostname header', { status: 400 })}
+      const data = await (await fetch(`${hostname.replace('ws://', 'http://')  }/auth`)).text()
+      if (!Signature.fromString(AuthSchema.parse(JSON.parse(data)).signature).verify(`I am ${hostname}`, address)) {return new Response('Invalid authentication from your server', { status: 401 })}
       return hostname as `ws://${string}`
     }
   }
 }
 
-export class HIP3_CONN_Authentication {
-  static proveServerAddress = (crypto: Crypto, listenPort: number) => prove.server.address(crypto, listenPort)
-  static proveClientAddress = (crypto: Crypto, peerHostname: `ws://${string}`, selfHostname: `ws://${string}`) => prove.client.address(crypto, peerHostname, selfHostname)
-  static verifyClientAddress = async (peerHostname: `ws://${string}`): Promise<false | `0x${string}`> => {
+export const HIP3_CONN_Authentication =  {
+  proveClientAddress: (account: Account, peerHostname: `ws://${string}`) => prove.client.address(account, peerHostname),
+  proveServerAddress: (account: Account, listenPort: number) => prove.server.address(account, listenPort),
+  verifyClientAddress: async (peerHostname: `ws://${string}`): Promise<`0x${string}` | false> => {
     try {
       return await verify.client.address(peerHostname)
     } catch (e) {
-      if ((e as { code: string }).code === 'ConnectionRefused') return false
+      if ((e as { code: string }).code === 'ConnectionRefused') {return false}
       throw e
     }
-  }
-  static verifyServerAddress = (headers: { [k: string]: string }, listenPort: number) => verify.server.address(headers, listenPort)
-  static verifyServerHostname = (headers: { [k: string]: string }, peerAddress: `0x${string}`) => verify.server.hostname(headers, peerAddress)
+  },
+  verifyServerAddress: (headers: Record<string, string>) => verify.server.address(headers),
+  verifyServerHostname: (headers: Record<string, string>, peerAddress: `0x${string}`) => verify.server.hostname(headers, peerAddress),
 }

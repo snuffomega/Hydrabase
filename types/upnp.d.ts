@@ -1,29 +1,18 @@
 declare module "upnpjs" {
   /** Options for adding a port mapping */
   export interface AddPortMappingOptions {
-    ip: string;
-    internalPort: number;
-    externalPort: number;
-    protocol?: "TCP" | "UDP";
     description?: string;
     enabled?: boolean;
+    externalPort: number;
+    internalPort: number;
+    ip: string;
+    protocol?: "TCP" | "UDP";
   }
 
   /** Options for deleting a port mapping */
   export interface DeletePortMappingOptions {
     externalPort: number;
     protocol?: "TCP" | "UDP";
-  }
-
-  /** A single port mapping entry */
-  export interface PortMapping {
-    externalPort: number;
-    internalPort: number;
-    internalClient: string;
-    protocol: "TCP" | "UDP";
-    description: string;
-    enabled: boolean;
-    leaseDuration?: number;
   }
 
   /** Internet Gateway Device returned by discover() */
@@ -33,9 +22,20 @@ declare module "upnpjs" {
 
     getExternalIPAddress(): Promise<string>;
 
-    getPortMappingList(): Promise<PortMapping[]>;
-
     getPortMapping(index: number): Promise<PortMapping>;
+
+    getPortMappingList(): Promise<PortMapping[]>;
+  }
+
+  /** A single port mapping entry */
+  export interface PortMapping {
+    description: string;
+    enabled: boolean;
+    externalPort: number;
+    internalClient: string;
+    internalPort: number;
+    leaseDuration?: number;
+    protocol: "TCP" | "UDP";
   }
 
   /** Discover the Internet Gateway Device */

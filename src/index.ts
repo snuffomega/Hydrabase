@@ -1,5 +1,5 @@
-import Node from './Node'
 import { error } from './log';
+import Node from './Node'
 
 process.on('unhandledRejection', (err) => error('ERROR:', '[MAIN] Unhandled rejection', {err}))
 process.on('uncaughtException', (err) => error('ERROR:', '[MAIN] Uncaught exception', {err}))
@@ -7,11 +7,11 @@ process.on('uncaughtException', (err) => error('ERROR:', '[MAIN] Uncaught except
 const node = await Node.init()
 
 const artists = await node.search('artist', 'jay z')
-/*const track = */await node.search('track', 'dont stop me now')
-/*const album = */await node.search('album', 'made in england')
-// log('LOG:', 'Artist results:', artists)
-// log('LOG:', 'Track results:', track)
-// log('LOG:', 'Album results:', album)
+/*Const track = */await node.search('track', 'dont stop me now')
+/*Const album = */await node.search('album', 'made in england')
+// Log('LOG:', 'Artist results:', artists)
+// Log('LOG:', 'Track results:', track)
+// Log('LOG:', 'Album results:', album)
 if (artists[0]) {
   await node.search('artist.tracks', artists[0].soul_id)
   await node.search('artist.albums', artists[0].soul_id)

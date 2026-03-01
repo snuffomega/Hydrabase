@@ -1,57 +1,62 @@
 import { sql } from 'drizzle-orm'
+
 import type { DB } from './db'
 import type { MetadataPlugin } from './Metadata'
+import type { DHT_Node } from './networking/dht'
 import type { Peer } from './networking/ws/peer'
-import type { DHTNode } from 'bittorrent-dht'
+
 import { error } from './log'
 
 export interface ApiPeer {
-  status: "connected" | "disconnected";
   address: `0x${string}`
-  hostname: string | undefined
   confidence: number
+  hostname: string | undefined
   latency: number
-  uptime: number
-  rxTotal: number
-  txTotal: number
   plugins: string[]
+  rxTotal: number
+  status: "connected" | "disconnected";
+  txTotal: number
+  uptime: number
 }
 
 export interface NodeStats {
-  timestamp: string
   address: `0x${string}`
-  installedPlugins: string[]
-  knownPlugins: string[]
-  knownPeers: `0x${string}`[]
   connectedPeers: number
-  peers: ApiPeer[]
   dhtNodes: string[]
-  votes: {
-    tracks: number
-    artists: number
-    albums: number
-  }
+  installedPlugins: string[]
+  knownPeers: `0x${string}`[]
+  knownPlugins: string[]
   peerData: {
-    tracks: number
-    artists: number
     albums: number
+    artists: number
+    tracks: number
+  }
+  peers: ApiPeer[]
+  timestamp: string
+  votes: {
+    albums: number
+    artists: number
+    tracks: number
   }
 }
 
-const COUNT_VOTES_SQL = (table: 'tracks' | 'artists' | 'albums') => sql.raw(`SELECT COUNT(*) AS n FROM ${table} WHERE address = '0x0'`)
-const COUNT_PEER_SQL = (table: 'tracks' | 'artists' | 'albums') => sql.raw(`SELECT COUNT(*) AS n FROM ${table} WHERE address != '0x0'`)
+const countVotesSql = (table: 'albums' | 'artists' | 'tracks') => sql.raw(`SELECT COUNT(*) AS n FROM ${table} WHERE address = '0x0'`)
+const countPeerSql = (table: 'albums' | 'artists' | 'tracks') => sql.raw(`SELECT COUNT(*) AS n FROM ${table} WHERE address != '0x0'`)
 
 export class StatsReporter {
   constructor(
     private readonly address: `0x${string}`,
     private readonly plugins: MetadataPlugin[],
-    private readonly getPeers: () => Record<`0x${string}`, Peer>,
+    private readonly getPeers: () => Map<`0x${string}`, Peer>,
     private readonly db: DB,
-    private readonly dht: { getNodes: () => DHTNode[] },
+    private readonly dht: DHT_Node,
     private readonly intervalMs = 10_000
   ) {
-    this.report()
     setInterval(() => this.report(), this.intervalMs)
+  }
+
+  public async init(): Promise<void> {
+    await this.report()
   }
 
   private async collectStats(): Promise<NodeStats> {
@@ -60,39 +65,40 @@ export class StatsReporter {
     const countRow = (rawSql: ReturnType<typeof sql.raw>) => this.db.all<{ n: number }>(rawSql)[0]?.n ?? 0
 
     return {
-      timestamp: new Date().toISOString(),
       address: this.address,
-      installedPlugins: this.plugins.map(p => p.id),
-      knownPlugins: this.knownPlugins(),
-      knownPeers: this.knownPeers().filter(a => a !== '0x0'),
       connectedPeers: Object.keys(peers).filter(a => a !== '0x0').length,
-      peers: await Promise.all(Object.entries(peers)
-        .filter(([address]) => address !== '0x0')
-        .map(async ([, { address, hostname, historicConfidence, averageLatencyMs, uptimeMs, rxTotal, txTotal, isOpened, plugins }]) => (
-          { address, hostname, confidence: historicConfidence, latency: averageLatencyMs, uptime: uptimeMs, rxTotal, txTotal, status: isOpened ? 'connected' : 'disconnected', plugins: plugins.map(({id}) => id) }
-        ))),
-      votes: {
-        tracks:  countRow(COUNT_VOTES_SQL('tracks')),
-        artists: countRow(COUNT_VOTES_SQL('artists')),
-        albums:  countRow(COUNT_VOTES_SQL('albums')),
-      },
-      dhtNodes: this.dht.getNodes().map(({host,port}) => `${host}:${port}`),
+      dhtNodes: this.dht.nodes.map(({host,port}) => `${host}:${port}`),
+      installedPlugins: this.plugins.map(p => p.id),
+      knownPeers: this.knownPeers().filter(a => a !== '0x0'),
+      knownPlugins: this.knownPlugins(),
       peerData: {
-        tracks:  countRow(COUNT_PEER_SQL('tracks')),
-        artists: countRow(COUNT_PEER_SQL('artists')),
-        albums:  countRow(COUNT_PEER_SQL('albums')),
+        albums:  countRow(countPeerSql('albums')),
+        artists: countRow(countPeerSql('artists')),
+        tracks:  countRow(countPeerSql('tracks')),
+      },
+      peers: await Promise.all(peers.entries()
+        .filter(([address]) => address !== '0x0')
+        .map(([, { address, averageLatencyMs, historicConfidence, hostname, isOpened, plugins, rxTotal, txTotal, uptimeMs }]) => (
+          { address, confidence: historicConfidence, hostname, latency: averageLatencyMs, plugins: plugins.map(({id}) => id), rxTotal, status: isOpened ? 'connected' as const : 'disconnected' as const, txTotal, uptime: uptimeMs }
+        ))),
+      timestamp: new Date().toISOString(),
+      votes: {
+        albums:  countRow(countVotesSql('albums')),
+        artists: countRow(countVotesSql('artists')),
+        tracks:  countRow(countVotesSql('tracks')),
       },
     }
   }
 
-  private async report(): Promise<void> {
-    const client = this.getPeers()['0x0']
-    try {
-      const stats = await this.collectStats()
-      if (client?.isOpened) client.sendStats(stats)
-    } catch (err) {
-      error('ERROR:', '[STATS] Failed to collect/send stats', {err})
-    }
+  private knownPeers(): `0x${string}`[] {
+    const rows = this.db.all<{ address: `0x${string}` }>(sql.raw(`
+      SELECT DISTINCT address FROM tracks
+      UNION
+      SELECT DISTINCT address FROM artists
+      UNION
+      SELECT DISTINCT address FROM albums
+    `))
+    return rows.map(r => r.address)
   }
 
   private knownPlugins(): string[] {
@@ -106,14 +112,12 @@ export class StatsReporter {
     return rows.map(r => r.plugin_id)
   }
 
-  private knownPeers(): `0x${string}`[] {
-    const rows = this.db.all<{ address: `0x${string}` }>(sql.raw(`
-      SELECT DISTINCT address FROM tracks
-      UNION
-      SELECT DISTINCT address FROM artists
-      UNION
-      SELECT DISTINCT address FROM albums
-    `))
-    return rows.map(r => r.address)
+  private async report(): Promise<void> {
+    const client = this.getPeers().get('0x0')
+    try {
+      if (client?.isOpened) client.sendStats(await this.collectStats())
+    } catch (err) {
+      error('ERROR:', '[STATS] Failed to collect/send stats', {err})
+    }
   }
 }
