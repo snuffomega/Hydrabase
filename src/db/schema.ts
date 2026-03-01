@@ -1,50 +1,50 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const track = sqliteTable('tracks', {
-    id: text('id').notNull(),
-    artist_id: text('artist_id'),
-    soul_id: text('soul_id').notNull(),
-    plugin_id: text('plugin_id').notNull(),
-    name: text('name').notNull(),
-    artists: text('artists').notNull(),
+    address: text('address').notNull(),
     album: text('album').notNull(),
+    artist_id: text('artist_id'),
+    artists: text('artists').notNull(),
+    confidence: integer('confidence').notNull(),
     duration_ms: integer().notNull(),
+    external_urls: text('external_urls').notNull(),
+    id: text('id').notNull(),
+    image_url: text('image_url').notNull(),
+    name: text('name').notNull(),
+    plugin_id: text('plugin_id').notNull(),
     popularity: integer().notNull(),
     preview_url: text('preview_url').notNull(),
-    external_urls: text('external_urls').notNull(),
-    image_url: text('image_url').notNull(),
-    address: text('address').notNull(),
-    confidence: integer('confidence').notNull(),
+    soul_id: text('soul_id').notNull(),
   }, table => [uniqueIndex('idx_plugin_track').on(table.plugin_id, table.id, table.address)])
 
 export const artist = sqliteTable('artists', {
-    id: text('id').notNull(),
-    soul_id: text('soul_id').notNull(),
-    plugin_id: text('plugin_id').notNull(),
-    name: text('name').notNull(),
-    popularity: integer('popularity').notNull(),
-    genres: text('genres').notNull(),
-    followers: integer('followers').notNull(),
-    external_urls: text('external_urls').notNull(),
-    image_url: text('image_url').notNull(),
     address: text('address').notNull(),
     confidence: integer('confidence').notNull(),
+    external_urls: text('external_urls').notNull(),
+    followers: integer('followers').notNull(),
+    genres: text('genres').notNull(),
+    id: text('id').notNull(),
+    image_url: text('image_url').notNull(),
+    name: text('name').notNull(),
+    plugin_id: text('plugin_id').notNull(),
+    popularity: integer('popularity').notNull(),
+    soul_id: text('soul_id').notNull(),
   }, table => [uniqueIndex('idx_plugin_artist').on(table.plugin_id, table.id, table.address)])
 
 export const album = sqliteTable('albums', {
-    id: text('id').notNull(),
-    artist_id: text('artist_id'),
-    soul_id: text('soul_id').notNull(),
-    plugin_id: text('plugin_id').notNull(),
-    name: text('name'),
-    artists: text('artists'),
-    release_date: text('release_date'),
-    total_tracks: integer('total_tracks'),
-    album_type: text('album_type'),
-    image_url: text('image_url'),
-    external_urls: text('external_urls'),
     address: text('address').notNull(),
+    album_type: text('album_type'),
+    artist_id: text('artist_id'),
+    artists: text('artists'),
     confidence: integer('confidence').notNull(),
+    external_urls: text('external_urls'),
+    id: text('id').notNull(),
+    image_url: text('image_url'),
+    name: text('name'),
+    plugin_id: text('plugin_id').notNull(),
+    release_date: text('release_date'),
+    soul_id: text('soul_id').notNull(),
+    total_tracks: integer('total_tracks'),
   }, table => [uniqueIndex('idx_plugin_album').on(table.plugin_id, table.id, table.address)])
-export const schema = { track, artist, album } as const
-// bunx drizzle-kit generate --dialect sqlite --schema ./src/db/schema.ts
+export const schema = { album, artist, track } as const
+// Bunx drizzle-kit generate --dialect sqlite --schema ./src/db/schema.ts

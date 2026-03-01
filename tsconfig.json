@@ -26,6 +26,13 @@
 		"noUnusedParameters": true,
 		"noPropertyAccessFromIndexSignature": true,
 
+		// Extra strictness
+		"exactOptionalPropertyTypes": true,
+		"noImplicitReturns": true,
+		"noUncheckedSideEffectImports": true,
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+
 		"types": ["bun"]
 	}
 }

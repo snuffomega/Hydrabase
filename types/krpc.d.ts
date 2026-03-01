@@ -7,67 +7,33 @@ declare module 'k-rpc' {
    * Shared / Core Types
    * -------------------------------------------------- */
 
-  export interface KRPCNode {
-    id?: Buffer;
-    host: string;
-    port: number;
-    token?: Buffer;
-  }
-
-  export interface KRPCQuery {
-    q: string;
-    a?: Record<string, unknown>;
-    t?: Buffer;
-  }
-
-  export interface KRPCResponse {
-    r?: Record<string, unknown>;
-    e?: [number, string];
-    t?: Buffer;
-  }
-
-  export interface KRPCError {
-    code: number;
-    message: string;
-  }
-
-  export type OnReply = (
-    message: KRPCResponse,
-    node: KRPCNode
-  ) => void | false;
-
-  /* -------------------------------------------------- *
-   * Options
-   * -------------------------------------------------- */
-
-  export interface KRPCOptions {
-    timeout?: number;
-    nodes?: string[];
-    concurrency?: number;
-    k?: number;
-    id?: Buffer;
-    idLength?: number;
-    krpcSocket?: unknown;
-  }
-
-  /* -------------------------------------------------- *
-   * Main RPC Interface
-   * -------------------------------------------------- */
-
   export interface KRPC extends EventEmitter {
-    readonly id: Buffer;
-    readonly nodes: unknown;
-
-    populate(
-      target: Buffer,
-      query: KRPCQuery,
-      callback?: (err: Error | null, replies: number) => void
-    ): void;
-
     closest(
       target: Buffer,
       query: KRPCQuery,
       onreply: OnReply,
+      callback?: (err: Error | null, replies: number) => void
+    ): void;
+    destroy(): void;
+
+    error(
+      node: KRPCNode,
+      query: KRPCQuery,
+      error: KRPCError,
+      callback?: () => void
+    ): void;
+
+    readonly id: Buffer;
+
+    readonly nodes: unknown;
+
+    on(event: 'query', listener: (query: KRPCQuery, node: KRPCNode) => void): this;
+
+    on(event: 'ping', listener: (oldNodes: KRPCNode[], swapNew: (node: KRPCNode) => void) => void): this;
+
+    populate(
+      target: Buffer,
+      query: KRPCQuery,
       callback?: (err: Error | null, replies: number) => void
     ): void;
 
@@ -83,7 +49,6 @@ declare module 'k-rpc' {
       onreply: (reply: KRPCResponse, node: KRPCNode) => void,
       callback?: (err: Error | null, replies: number) => void
     ): void;
-
     response(
       node: KRPCNode,
       query: KRPCQuery,
@@ -91,19 +56,54 @@ declare module 'k-rpc' {
       nodes?: KRPCNode[],
       callback?: () => void
     ): void;
-
-    error(
-      node: KRPCNode,
-      query: KRPCQuery,
-      error: KRPCError,
-      callback?: () => void
-    ): void;
-
-    destroy(): void;
-
-    on(event: 'query', listener: (query: KRPCQuery, node: KRPCNode) => void): this;
-    on(event: 'ping', listener: (oldNodes: KRPCNode[], swapNew: (node: KRPCNode) => void) => void): this;
   }
+
+  export interface KRPCError {
+    code: number;
+    message: string;
+  }
+
+  export interface KRPCNode {
+    host: string;
+    id?: Buffer;
+    port: number;
+    token?: Buffer;
+  }
+
+  export interface KRPCOptions {
+    concurrency?: number;
+    id?: Buffer;
+    idLength?: number;
+    k?: number;
+    krpcSocket?: unknown;
+    nodes?: string[];
+    timeout?: number;
+  }
+
+  export interface KRPCQuery {
+    a?: Record<string, unknown>;
+    q: string;
+    t?: Buffer;
+  }
+
+  /* -------------------------------------------------- *
+   * Options
+   * -------------------------------------------------- */
+
+  export interface KRPCResponse {
+    e?: [number, string];
+    r?: Record<string, unknown>;
+    t?: Buffer;
+  }
+
+  /* -------------------------------------------------- *
+   * Main RPC Interface
+   * -------------------------------------------------- */
+
+  export type OnReply = (
+    message: KRPCResponse,
+    node: KRPCNode
+  ) => false | undefined;
 
   /* -------------------------------------------------- *
    * Factory

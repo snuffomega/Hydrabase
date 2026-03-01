@@ -1,47 +1,21 @@
-import { AnnounceSchema } from '../HIP4/announce';
-import { RequestManager, RequestSchema, ResponseSchema, type Request, type Response } from '../../RequestManager';
 import type z from 'zod';
+
 import type { Peer } from '../../networking/ws/peer';
+
 import { log, warn } from '../../log';
+import { type Request, RequestManager, RequestSchema, type Response, ResponseSchema } from '../../RequestManager';
+import { AnnounceSchema } from '../HIP4/announce';
 
 const MessageSchemas = {
+  announce: AnnounceSchema,
   request: RequestSchema,
-  response: ResponseSchema,
-  announce: AnnounceSchema
+  response: ResponseSchema
 }
 
-type MessageType = keyof typeof MessageSchemas
 type Message<T extends keyof typeof MessageSchemas = keyof typeof MessageSchemas> = z.infer<typeof MessageSchemas[T]>
+type MessageType = keyof typeof MessageSchemas
 
 export class HIP2_Conn_Message {
-  constructor(private readonly peer: Peer, private readonly requestManager: RequestManager) {}
-
-  parseMessage = (message: string): { type: MessageType, data: Message, nonce: number } | false => {
-    const { nonce, ...result } = JSON.parse(message)
-
-    const type = HIP2_Conn_Message.identifyType(result)
-    if (!type) {
-      warn('DEVWARN:', `[HIP2] Unexpected message from ${this.peer.address}`, `- ${message}`)
-      return false
-    }
-
-    const {data,error} = MessageSchemas[type].safeParse(result[type])
-    if (!data) {
-      warn('DEVWARN:', `[HIP2] Unexpected ${type} from ${this.peer.address}`, error ? {message, error} : {message})
-      return false
-    }
-    
-    log('LOG:', `[HIP2] Received ${type}${nonce ? ` ${nonce}` : ''} from ${this.peer.address}`)
-
-    return { type, data, nonce }
-  }
-
-  static identifyType = (result: Message): MessageType | null => // 'capability' in result ? 'capability' :
-    'request' in result ? 'request'
-    : 'response' in result ? 'response'
-    : 'announce' in result ? 'announce'
-    : null
-
   public readonly send = {
     request: async <T extends Request['type']>(request: Request & { type: T }): Promise<Response<T>> => {
       const { nonce, promise } = this.requestManager.register<T>()
@@ -51,6 +25,28 @@ export class HIP2_Conn_Message {
       log('LOG:', `[HIP2] Received ${results.length} results from ${this.peer.address}`)
       return results
     },
-    response: async (response: Response, nonce: number) => this.peer.send(JSON.stringify({ response, nonce }))
+    response: (response: Response, nonce: number) => this.peer.send(JSON.stringify({ nonce, response }))
+  }
+
+  constructor(private readonly peer: Peer, private readonly requestManager: RequestManager) {}
+
+  static readonly identifyType = (result: Message): MessageType | null => // 'capability' in result ? 'capability' :
+    'request' in result ? 'request'
+    : 'response' in result ? 'response'
+    : 'announce' in result ? 'announce'
+    : null
+
+  parseMessage = (message: string): false | { data: Message, nonce: number; type: MessageType } => {
+    const { nonce, ...result } = JSON.parse(message)
+
+    const type = HIP2_Conn_Message.identifyType(result)
+    if (!type) return warn('DEVWARN:', `[HIP2] Unexpected message from ${this.peer.address}`, `- ${message}`)
+
+    const {data,error} = MessageSchemas[type].safeParse(result[type])
+    if (!data) return warn('DEVWARN:', `[HIP2] Unexpected ${type} from ${this.peer.address}`, error ? {error, message} : {message})
+    
+    log('LOG:', `[HIP2] Received ${type}${nonce ? ` ${nonce}` : ''} from ${this.peer.address}`)
+
+    return { data, nonce, type }
   }
 }

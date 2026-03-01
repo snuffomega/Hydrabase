@@ -1,84 +1,50 @@
 import z from 'zod'
-import { Crypto } from "../../Crypto"
-import { HIP3_CONN_Authentication } from '../../protocol/HIP3/authentication'
+
+import type { Account } from '../../Crypto/Account'
 import type Peers from '../../Peers'
+
 import { log, warn } from '../../log'
+import { HIP3_CONN_Authentication } from '../../protocol/HIP3/authentication'
+
+export interface Self {
+  account: Account
+  hostname: `ws://${string}`
+}
+interface Peer {
+  address: `0x${string}`
+  hostname: `ws://${string}`
+}
 
 export const AuthSchema = z.object({
+  address: z.string().regex(/^0x/iu, { message: "Address must start with 0x" }).transform((val) => val as `0x${string}`),
   signature: z.string(),
-  address: z.string().regex(/^0x/i, { message: "Address must start with 0x" }).transform((val) => val as `0x${string}`),
 })
 
 export default class WebSocketClient {
-  private socket!: WebSocket
+  get isOpened() {
+    return this._isOpened
+  }
   private _isOpened = false
-  private messageHandler?: (message: string) => void
-  private closeHandler?: () => void
-  private openHandler?: () => void
-  private retryQueue: Array<() => void> = []
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private reconnectAttempts = 0
+  private closeHandlers: (() => void)[] = []
   private dontReconnect = false
+  private messageHandler?: (message: string) => void
+  private openHandler?: () => void
+  private reconnectAttempts = 0
+  private reconnectTimer: null | ReturnType<typeof setTimeout> = null
+  private retryQueue: (() => void)[] = []
 
-  private constructor(crypto: Crypto, public readonly address: `0x${string}`, public readonly hostname: `ws://${string}`, private readonly selfHostname: `ws://${string}`, private readonly peers: Peers) {
-    this._connect(crypto)
+  private socket!: WebSocket
+
+  private constructor(account: Account, public readonly peer: Peer, private readonly peers: Peers) {
+    this._connect(account)
   }
 
-  private _connect(crypto: Crypto) {
-    const headers = HIP3_CONN_Authentication.proveClientAddress(crypto, this.hostname, this.selfHostname)
-    log('LOG:', `[CLIENT] Connecting to server ${this.hostname}`)
-    this.socket = new WebSocket(this.hostname, { headers })
-
-    this.socket.addEventListener('open', () => {
-      log('LOG:', `[CLIENT] Connected to server ${this.hostname} ${this.address}`)
-      this._isOpened = true
-      this._flushQueue()
-      this.openHandler?.()
-    })
-
-    this.socket.addEventListener('close', ev => {
-      log('LOG:', `[CLIENT] Connection closed with server ${this.hostname} ${this.address}`, `- ${ev.reason}`)
-      this._isOpened = false
-      this.closeHandler?.()
-      if (!this.peers.isConnectionOpened(this.address)) this._scheduleReconnect(crypto)
-    })
-
-    this.socket.addEventListener('error', err => {
-      warn('DEVWARN:', `[CLIENT] Connection failed with server ${this.hostname} ${this.address}`, err)
-      this._isOpened = false
-      this.closeHandler?.()
-    })
-
-    this.socket.addEventListener('message', message => this.messageHandler?.(message.data))
-  }
-
-  static readonly init = async (crypto: Crypto, hostname: `ws://${string}`, selfHostname: `ws://${string}`, peers: Peers) => {
+  static readonly init = async (peers: Peers, account: Account, hostname: `ws://${string}`) => {
     const address = await HIP3_CONN_Authentication.verifyClientAddress(hostname)
-    if (!address) return false
-    if (peers.has(address)) {
-      warn('DEVWARN:', `[CLIENT] Already connected/connecting to peer ${address}`)
-      return false
-    }
-    if (address === crypto.address) {
-      warn('DEVWARN:', `[CLIENT] Not connecting to self`)
-      return false
-    }
-    return new WebSocketClient(crypto, address, hostname, selfHostname, peers)
-  }
-
-  private _scheduleReconnect(crypto: Crypto) {
-    if (this.reconnectTimer) return
-    log('LOG:', `[CLIENT] Reconnecting to ${this.address} ${this.hostname} in ${this.reconnectAttempts*5_000}ms...`)
-    this.reconnectTimer = setTimeout(() => {
-      if (this.dontReconnect) return
-      this._connect(crypto)
-    }, this.reconnectAttempts*5_000)
-    this.reconnectAttempts++
-  }
-
-  private _flushQueue() {
-    const queue = this.retryQueue.splice(0)
-    for (const fn of queue) fn()
+    if (!address) {return false}
+    if (peers.has(address)) return warn('DEVWARN:', `[CLIENT] Already connected/connecting to peer ${address}`)
+    if (address === account.address) return warn('DEVWARN:', `[CLIENT] Not connecting to self`)
+    return new WebSocketClient(account, { address, hostname }, peers)
   }
 
   public readonly close = () => {
@@ -87,22 +53,58 @@ export default class WebSocketClient {
     this.dontReconnect = true
   }
 
-  get isOpened() {
-    return this._isOpened
-  }
-
-  send(data: string) {
-    if (this._isOpened) this.socket.send(data)
-    else this.retryQueue.push(() => this.socket.send(data))
+  public onClose(handler: () => void) {
+    this.closeHandlers?.push(() => handler())
   }
 
   public onMessage(handler: (message: string) => void) {
     this.messageHandler = (msg) => handler(msg)
   }
-  public onClose(handler: () => void) {
-    this.closeHandler = () => handler()
-  }
+
   public onOpen(handler: () => void) {
     this.openHandler = () => handler()
+  }
+
+  send(data: string) {
+    if (this._isOpened) {this.socket.send(data)}
+    else {this.retryQueue.push(() => this.socket.send(data))}
+  }
+
+  private _connect(account: Account) {
+    const headers = HIP3_CONN_Authentication.proveClientAddress(account, this.peer.hostname)
+    log('LOG:', `[CLIENT] Connecting to server ${this.peer.hostname}`)
+    this.socket = new WebSocket(this.peer.hostname, { headers })
+
+    this.socket.addEventListener('open', () => {
+      log('LOG:', `[CLIENT] Connected to server ${this.peer.hostname} ${this.peer.address}`)
+      this._isOpened = true
+      this._flushQueue()
+      this.openHandler?.()
+    })
+
+    this.socket.addEventListener('close', ev => {
+      log('LOG:', `[CLIENT] Connection closed with server ${this.peer.hostname} ${this.peer.address}`, `- ${ev.reason}`)
+      this._isOpened = false
+      for (const handler of this.closeHandlers) handler()
+      if (!this.peers.isConnectionOpened(this.peer.address)) {this._scheduleReconnect(account)}
+    })
+
+    this.socket.addEventListener('error', err => {
+      warn('DEVWARN:', `[CLIENT] Connection failed with server ${this.peer.hostname} ${this.peer.address}`, err)
+      this._isOpened = false
+      for (const handler of this.closeHandlers) handler()
+    })
+
+    this.socket.addEventListener('message', message => this.messageHandler?.(message.data))
+  }
+  private _flushQueue() {
+    const queue = this.retryQueue.splice(0)
+    for (const fn of queue) fn()
+  }
+  private _scheduleReconnect(account: Account) {
+    if (this.reconnectTimer) return
+    log('LOG:', `[CLIENT] Reconnecting to ${this.peer.address} ${this.peer.hostname} in ${this.reconnectAttempts*5_000}ms...`)
+    this.reconnectTimer = setTimeout(() => this.dontReconnect ? undefined : this._connect(account), this.reconnectAttempts*5_000)
+    this.reconnectAttempts++
   }
 }

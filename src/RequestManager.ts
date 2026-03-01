@@ -1,41 +1,54 @@
 import z from 'zod'
+
 import { AlbumSearchResultSchema, ArtistSearchResultSchema, TrackSearchResultSchema } from './Metadata';
 
 export const RequestSchema = z.object({
-  type: z.union([z.literal('track'), z.literal('artist'), z.literal('album'), z.literal('artist.albums'), z.literal('artist.tracks')]),
-  query: z.string()
+  query: z.string(),
+  type: z.union([z.literal('track'), z.literal('artist'), z.literal('album'), z.literal('artist.albums'), z.literal('artist.tracks')])
 })
 export const ResponseSchema = z.union([z.array(TrackSearchResultSchema), z.array(ArtistSearchResultSchema), z.array(AlbumSearchResultSchema)])
 
-export type Track = z.infer<typeof TrackSearchResultSchema>
-export type Artist = z.infer<typeof ArtistSearchResultSchema>
 export type Album = z.infer<typeof AlbumSearchResultSchema>
-
-interface MessageMap {
-  track: z.infer<typeof TrackSearchResultSchema>[];
-  artist: z.infer<typeof ArtistSearchResultSchema>[];
-  album: z.infer<typeof AlbumSearchResultSchema>[];
-  'artist.albums': z.infer<typeof AlbumSearchResultSchema>[];
-  'artist.tracks': z.infer<typeof TrackSearchResultSchema>[];
-}
-
+export type Artist = z.infer<typeof ArtistSearchResultSchema>
 export type Request = z.infer<typeof RequestSchema>
+
 export type Response<T extends keyof MessageMap = keyof MessageMap> = MessageMap[T]
 
-type PendingRequest<T extends Request['type']> = {
-  resolve: (value: Response<T>) => void
+export type Track = z.infer<typeof TrackSearchResultSchema>
+interface MessageMap {
+  album: z.infer<typeof AlbumSearchResultSchema>[];
+  artist: z.infer<typeof ArtistSearchResultSchema>[];
+  'artist.albums': z.infer<typeof AlbumSearchResultSchema>[];
+  'artist.tracks': z.infer<typeof TrackSearchResultSchema>[];
+  track: z.infer<typeof TrackSearchResultSchema>[];
+}
+
+interface PendingRequest<T extends Request['type']> {
   reject: (reason: Error) => void
-  timeout: ReturnType<typeof setTimeout>
+  resolve: (value: Response<T>) => void
   startedAt: number
+  timeout: ReturnType<typeof setTimeout>
 }
 
 export class RequestManager {
+  public get averageLatencyMs(): number {
+    return this.resolvedCount === 0 ? 0 : this.totalLatency / this.resolvedCount
+  }
   private nonce = -1
   private readonly pending = new Map<number, PendingRequest<Request['type']>>()
-  private totalLatency = 0
   private resolvedCount = 0
 
-  constructor(private readonly timeoutMs: number = 15_000) {}
+  private totalLatency = 0
+
+  constructor(private readonly timeoutMs = 15_000) {}
+
+  public close(reason = 'Connection closed'): void {
+    for (const [nonce, pending] of this.pending) {
+      clearTimeout(pending.timeout)
+      pending.reject(new Error(`${reason} (nonce: ${nonce})`))
+    }
+    this.pending.clear()
+  }
 
   public register<T extends Request['type']>(): { nonce: number; promise: Promise<Response<T>> } {
     const nonce = ++this.nonce
@@ -47,10 +60,10 @@ export class RequestManager {
       }, this.timeoutMs)
 
       this.pending.set(nonce, {
-        resolve: resolve as PendingRequest<Request['type']>['resolve'],
         reject,
-        timeout,
+        resolve: resolve as PendingRequest<Request['type']>['resolve'],
         startedAt: Date.now(),
+        timeout,
       })
     })
 
@@ -59,7 +72,7 @@ export class RequestManager {
 
   public resolve<T extends Request['type']>(nonce: number, response: Response<T>): boolean {
     const pending = this.pending.get(nonce)
-    if (!pending) return false
+    if (!pending) {return false}
 
     const latency = Date.now() - pending.startedAt
     this.totalLatency += latency
@@ -69,17 +82,5 @@ export class RequestManager {
     pending.resolve(response as Response<Request['type']>)
     this.pending.delete(nonce)
     return true
-  }
-
-  public close(reason: string = 'Connection closed'): void {
-    for (const [nonce, pending] of this.pending) {
-      clearTimeout(pending.timeout)
-      pending.reject(new Error(`${reason} (nonce: ${nonce})`))
-    }
-    this.pending.clear()
-  }
-
-  public get averageLatencyMs(): number {
-    return this.resolvedCount === 0 ? 0 : this.totalLatency / this.resolvedCount
   }
 }
