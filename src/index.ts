@@ -7,14 +7,15 @@ process.on('uncaughtException', (err) => error('ERROR:', '[MAIN] Uncaught except
 const node = await Node.init()
 
 const artists = await node.search('artist', 'jay z')
-/*Const track = */await node.search('track', 'dont stop me now')
-/*Const album = */await node.search('album', 'made in england')
+const albums = await node.search('album', 'made in england')
+/*Const tracks = */await node.search('track', 'dont stop me now')
 // Log('LOG:', 'Artist results:', artists)
-// Log('LOG:', 'Track results:', track)
-// Log('LOG:', 'Album results:', album)
+// Log('LOG:', 'Album results:', albums)
+// Log('LOG:', 'Track results:', tracks)
 if (artists[0]) {
   await node.search('artist.tracks', artists[0].soul_id)
   await node.search('artist.albums', artists[0].soul_id)
 }
+if (albums[0]) await node.search('album.tracks', albums[0].soul_id)
 
 // TODO: Merge duplicate artists from diff plugins

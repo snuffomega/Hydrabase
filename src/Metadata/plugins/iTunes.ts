@@ -87,7 +87,38 @@ export default class ITunes implements MetadataPlugin {
     if (limit > 200) {throw new Error('Maximum limit is 200')}
   }
 
-  async lookupAlbums(id: string): Promise<AlbumSearchResult[]> {
+  async albumTracks(id: string): Promise<TrackSearchResult[]> {
+    const params = new URLSearchParams({
+      country: this.country,
+      entity: 'song',
+      id,
+      limit: this.limit.toString(),
+      media: 'music',
+    });
+
+    const response = await fetch(`${this.baseUrl}lookup?${params.toString()}`);
+    const data = await response.json();
+    data.results = data.results.filter((result: {wrapperType:string}) => result.wrapperType === 'track')
+    const parsed = iTunesTrackLookupResponseSchema.safeParse(data);
+    if (!parsed.success) {throw new Error(`Invalid iTunes API response: ${parsed.error}`);}
+
+    return parsed.data.results.map(result => ({
+      album: result.collectionName ?? '',
+      artists: [result.artistName],
+      confidence: 1,
+      duration_ms: result.trackTimeMillis ?? 0,
+      external_urls: { itunes: result.trackViewUrl },
+      id: String(result.trackId),
+      image_url: result.artworkUrl100.replace('100x100', '600x600'),
+      name: result.trackName,
+      plugin_id: this.id,
+      popularity: 0,
+      preview_url: result.previewUrl ?? '',
+      soul_id: 'soul_', // Ignored
+    }))
+  }
+
+  async artistAlbums(id: string): Promise<AlbumSearchResult[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'album',
@@ -121,7 +152,7 @@ export default class ITunes implements MetadataPlugin {
     });
   }
 
-  async lookupTracks(id: string): Promise<TrackSearchResult[]> {
+  async artistTracks(id: string): Promise<TrackSearchResult[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'song',
@@ -149,7 +180,7 @@ export default class ITunes implements MetadataPlugin {
       popularity: 0,
       preview_url: result.previewUrl ?? '',
       soul_id: 'soul_', // Ignored
-    }));
+    }))
   }
 
   async searchAlbum(term: string): Promise<AlbumSearchResult[]> {

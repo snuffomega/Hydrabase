@@ -60,9 +60,10 @@ export const AlbumSearchResultSchema = z.object({
 export type AlbumSearchResult = z.infer<typeof AlbumSearchResultSchema>
 
 export interface MetadataPlugin {
+  albumTracks: (id: string, peers: Peers) => Promise<TrackSearchResult[]>
+  artistAlbums: (id: string, peers: Peers) => Promise<AlbumSearchResult[]>
+  artistTracks: (id: string, peers: Peers) => Promise<TrackSearchResult[]>
   id: string
-  lookupAlbums: (id: string, peers: Peers) => Promise<AlbumSearchResult[]>
-  lookupTracks: (id: string, peers: Peers) => Promise<TrackSearchResult[]>
   searchAlbum: (query: string) => Promise<AlbumSearchResult[]>
   searchArtist: (query: string) => Promise<ArtistSearchResult[]>
   searchTrack: (query: string) => Promise<TrackSearchResult[]>
@@ -70,6 +71,7 @@ export interface MetadataPlugin {
 
 export interface SearchResult {
   album: AlbumSearchResult
+  'album.tracks': TrackSearchResult
   artist: ArtistSearchResult
   'artist.albums': AlbumSearchResult
   'artist.tracks': TrackSearchResult
@@ -91,23 +93,23 @@ const computeConfidence = (artistConfidences: number[], peerConfidences: number[
   return ((numerator / denominator) / 2) + 0.5
 }
 
-const matchArtistId = (pluginArtists: (ArtistSearchResult & { address: `0x${string}` })[], peers: Peers): undefined | { confidence: number; id: string } => {
-  const votes = new Map<string, { artistConfidences: number[]; peerConfidences: number[], }>()
-  for (const artist of pluginArtists) {
-    const pastVotes = votes.get(artist.id) ?? { artistConfidences: [], peerConfidences: [] }
-    votes.set(artist.id, {
-      artistConfidences: [...pastVotes.artistConfidences, artist.confidence],
-      peerConfidences: [...pastVotes.peerConfidences, peers.getConfidence(artist.address)]
+const matchId = (items: ((AlbumSearchResult | ArtistSearchResult) & { address: `0x${string}` })[], peers: Peers): undefined | { confidence: number; id: string } => {
+  const votes = new Map<string, { itemConfidences: number[]; peerConfidences: number[], }>()
+  for (const item of items) {
+    const pastVotes = votes.get(item.id) ?? { itemConfidences: [], peerConfidences: [] }
+    votes.set(item.id, {
+      itemConfidences: [...pastVotes.itemConfidences, item.confidence],
+      peerConfidences: [...pastVotes.peerConfidences, peers.getConfidence(item.address)]
     })
   }
 
-  const artistConfidences = new Map<string, number>()
+  const confidences = new Map<string, number>()
   for (const entry of votes) {
     const [artistId, votes] = entry
-    artistConfidences.set(artistId, computeConfidence(votes.artistConfidences, votes.peerConfidences))
+    confidences.set(artistId, computeConfidence(votes.itemConfidences, votes.peerConfidences))
   }
 
-  const id = artistConfidences.size ? [...artistConfidences.entries()].reduce((a, b) => !a || b[1] > a[1] ? b : a, [...artistConfidences.entries()][0]) : undefined
+  const id = confidences.size ? [...confidences.entries()].reduce((a, b) => !a || b[1] > a[1] ? b : a, [...confidences.entries()][0]) : undefined
   return id ? { confidence: id[1], id: id[0] } : undefined
 }
 
@@ -122,20 +124,31 @@ export default class MetadataManager implements MetadataPlugin {
     return [...primary, ...secondary.filter(r => !seen.has(`${r.soul_id}:${r.address}`))]
   }
 
-  public async handleRequest<T extends Request['type']>(request: Request & { type: T }, peers: Peers) {
-    log('LOG:', `[META] Searching for ${request.type}: ${request.query}`)
-    const results = request.type === 'track' ? await this.searchTrack(request.query)
-      : request.type === 'artist' ? await this.searchArtist(request.query)
-      : request.type === 'album' ? await this.searchAlbum(request.query)
-      : request.type === 'artist.albums' ? await this.lookupAlbums(request.query, peers)
-      : request.type === 'artist.tracks' ? await this.lookupTracks(request.query, peers)
-      : warn('DEVWARN:', `[HIP2] Invalid request ${request.type}`)
-    if (!results) return []
-    log('LOG:', `[META] Received ${results.length} results`)
-    return results
+  async albumTracks(albumSoulId: string, peers: Peers): Promise<TrackSearchResult[]> {
+    const albums = this.db.album.lookupBySoulId(albumSoulId)
+    const albumIds = new Map<string, string>()
+    const pluginResults = (await Promise.all(this.plugins.map(async p => {
+      const pluginAlbums = albums.filter(({plugin_id}) => plugin_id === p.id)
+      const {id} = pluginAlbums.find(({address}) => address === '0x0') ?? {}
+      if (id) {
+        albumIds.set(p.id, id)
+        return (await p.albumTracks(id, peers)).map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+      }
+
+      const bestId = matchId(pluginAlbums, peers)
+      if (bestId) {
+        albumIds.set(p.id, bestId.id)
+        return (await p.albumTracks(bestId.id, peers)).map(result => ({ ...result, confidence: (result.confidence+bestId.confidence)/2, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+      }
+      return []
+    })))
+    const results = pluginResults.flat().map(result => ({ ...result, address: '0x0' as const }))
+    for (const result of results) {this.db.track.upsertFromPlugin(result)}
+    const cached = this.db.track.lookupByArtistIds(albumIds)
+    return MetadataManager.merge(results, cached)
   }
 
-  async lookupAlbums(artistSoulId: string, peers: Peers): Promise<AlbumSearchResult[]> {
+  async artistAlbums(artistSoulId: string, peers: Peers): Promise<AlbumSearchResult[]> {
     const artists = this.db.artist.lookupBySoulId(artistSoulId)
     const artistIds = new Map<string, string>()
     const pluginResults = (await Promise.all(this.plugins.map(async p => {
@@ -143,13 +156,13 @@ export default class MetadataManager implements MetadataPlugin {
       const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
       if (id) {
         artistIds.set(p.id, id)
-        return (await p.lookupAlbums(id, peers)).map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+        return (await p.artistAlbums(id, peers)).map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
       }
 
-      const bestId = matchArtistId(pluginArtists, peers)
+      const bestId = matchId(pluginArtists, peers)
       if (bestId) {
         artistIds.set(p.id, bestId.id)
-        return (await p.lookupAlbums(bestId.id, peers)).map(result => ({ ...result, confidence: (result.confidence+bestId.confidence)/2, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+        return (await p.artistAlbums(bestId.id, peers)).map(result => ({ ...result, confidence: (result.confidence+bestId.confidence)/2, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
       }
       return []
     })))
@@ -159,21 +172,21 @@ export default class MetadataManager implements MetadataPlugin {
     return MetadataManager.merge(results, cached)
   }
 
-  async lookupTracks(artistSoulId: string, peers: Peers): Promise<TrackSearchResult[]> {
+  async artistTracks(artistSoulId: string, peers: Peers): Promise<TrackSearchResult[]> {
     const artists = this.db.artist.lookupBySoulId(artistSoulId)
     const artistIds = new Map<string, string>()
     const pluginResults = (await Promise.all(this.plugins.map(async p => {
-      const pluginArtists = artists.filter(({ plugin_id }) => plugin_id === p.id)
+      const pluginArtists = artists.filter(({plugin_id}) => plugin_id === p.id)
       const { id } = pluginArtists.find(({address}) => address === '0x0') ?? {}
       if (id) {
         artistIds.set(p.id, id)
-        return (await p.lookupTracks(id, peers)).map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+        return (await p.artistTracks(id, peers)).map(result => ({ ...result, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
       }
 
-      const bestId = matchArtistId(pluginArtists, peers)
+      const bestId = matchId(pluginArtists, peers)
       if (bestId) {
         artistIds.set(p.id, bestId.id)
-        return (await p.lookupTracks(bestId.id, peers)).map(result => ({ ...result, confidence: (result.confidence+bestId.confidence)/2, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
+        return (await p.artistTracks(bestId.id, peers)).map(result => ({ ...result, confidence: (result.confidence+bestId.confidence)/2, soul_id: `soul_${Bun.hash(`${result.plugin_id}:${result.id}`.slice(0, CONFIG.soulIdCutoff))}` }))
       }
       return []
     })))
@@ -181,6 +194,20 @@ export default class MetadataManager implements MetadataPlugin {
     for (const result of results) {this.db.track.upsertFromPlugin(result)}
     const cached = this.db.track.lookupByArtistIds(artistIds)
     return MetadataManager.merge(results, cached)
+  }
+
+  public async handleRequest<T extends Request['type']>(request: Request & { type: T }, peers: Peers) {
+    log('LOG:', `[META] Searching for ${request.type}: ${request.query}`)
+    const results = request.type === 'track' ? await this.searchTrack(request.query)
+      : request.type === 'artist' ? await this.searchArtist(request.query)
+      : request.type === 'album' ? await this.searchAlbum(request.query)
+      : request.type === 'artist.albums' ? await this.artistAlbums(request.query, peers)
+      : request.type === 'artist.tracks' ? await this.artistTracks(request.query, peers)
+      : request.type === 'album.tracks' ? await this.albumTracks(request.query, peers)
+      : warn('DEVWARN:', `[HIP2] Invalid request ${request.type}`)
+    if (!results) return []
+    log('LOG:', `[META] Received ${results.length} results`)
+    return results
   }
 
   async searchAlbum(query: string): Promise<AlbumSearchResult[]> {

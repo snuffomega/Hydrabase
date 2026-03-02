@@ -25,6 +25,23 @@ export class AlbumRepository {
         total_tracks: row.total_tracks ?? 0,
       }))
   }
+  
+  lookupBySoulId(soulId: string, includePeers = true): (AlbumSearchResult & { address: `0x${string}` })[] {
+    return this.db.select().from(schema.album)
+      .where(and(eq(schema.album.soul_id, soulId), includePeers ? undefined : eq(schema.album.address, '0x0')))
+      .all()
+      .map(row => ({
+        ...row,
+        address: row.address as `0x${string}`,
+        album_type: row.album_type ?? '',
+        artists: row.artists?.split(',') ?? [],
+        external_urls: JSON.parse(row.external_urls ?? ''),
+        image_url: row.image_url ?? '',
+        name: row.name ?? '',
+        release_date: row.release_date ?? '',
+        total_tracks: row.total_tracks ?? 0,
+      }))
+  }
 
   searchByName(query: string, includePeers = true): (AlbumSearchResult & { address: `0x${string}` })[] {
     return this.db.select().from(schema.album)
