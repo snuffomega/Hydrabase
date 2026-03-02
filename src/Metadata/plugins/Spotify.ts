@@ -80,7 +80,39 @@ export default class Spotify implements MetadataPlugin {
     if (limit > 50) {throw new Error("Maximum limit is 50")}
   }
 
-  async lookupAlbums(id: string): Promise<AlbumSearchResult[]> {
+  async albumTracks(id: string): Promise<TrackSearchResult[]> {
+    const token = await this.authenticate()
+
+    const params = new URLSearchParams({
+      limit: this.limit.toString(),
+      market: this.market,
+    })
+
+    const response = await fetch(`${this.baseUrl}albums/${id}/tracks?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await response.json()
+    const parsed = spotifySearchResponseSchema.safeParse(data)
+    if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
+
+    return parsed.data.tracks.items.map((track) => ({
+      album: track.album.name,
+      artists: track.artists.map((a) => a.name),
+      confidence: 1,
+      duration_ms: track.duration_ms,
+      external_urls: track.external_urls,
+      id: track.id,
+      image_url: track.album.images[0]?.url ?? "",
+      name: track.name,
+      plugin_id: this.id,
+      popularity: track.popularity,
+      preview_url: track.preview_url ?? "",
+      soul_id: 'soul_', // Ignored
+    }))
+  }
+
+  async artistAlbums(id: string): Promise<AlbumSearchResult[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -111,7 +143,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async lookupTracks(id: string): Promise<TrackSearchResult[]> {
+  async artistTracks(id: string): Promise<TrackSearchResult[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({

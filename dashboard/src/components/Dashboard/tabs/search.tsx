@@ -26,7 +26,7 @@ interface SearchResultsProps {
   setSelected: React.Dispatch<React.SetStateAction<AnyResult | null>>
 }
 
-const isTrack  = (_r: AnyResult, type: Request['type']): _r is TrackSearchResult  => type === "track" || type === "artist.tracks"
+const isTrack  = (_r: AnyResult, type: Request['type']): _r is TrackSearchResult  => type === "track" || type === "artist.tracks" || type === 'album.tracks'
 const isAlbum  = (_r: AnyResult, type: Request['type']): _r is AlbumSearchResult  => type === "album" || type === "artist.albums"
 const isArtist = (_r: AnyResult, type: Request['type']): _r is ArtistSearchResult => type === "artist"
 
@@ -73,7 +73,7 @@ const DetailPanel = ({ onClose, onTogglePlay, playingId, r, type }: { onClose: (
 }
 
 const getColumns = (type: Request['type']) => {
-  if (type === "track" || type === 'artist.tracks') return ["", "Name", "Soul ID", "Confidence", "Plugin ID", "Track ID", "Artists", "Album", "Duration", "Popularity", ""]
+  if (type === "track" || type === 'artist.tracks' || type === 'album.tracks') return ["", "Name", "Soul ID", "Confidence", "Plugin ID", "Track ID", "Artists", "Album", "Duration", "Popularity", ""]
   if (type === "album" || type === "artist.albums") return ["", "Name", "Soul ID", "Confidence", "Plugin ID", "Album ID", "Artists", "Release Date", "Tracks", ""]
   if (type === "artist") return ["", "Name", "Soul ID", "Confidence", "Plugin ID", "Artist ID", "Genres", "Followers", "Popularity", ""]
   return ["", "Name", ""]
@@ -151,7 +151,7 @@ export const SearchTab = ({ onSearch, onTogglePlay, playingId, searchElapsed, se
   return <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
       <span style={{ color: MUTED, fontSize: 11 }}>Type:</span>
-      {(["track", "album", "artist", "artist.tracks", "artist.albums"] as const).map(t => <button className={`fbtn${searchType === t ? " on" : ""}`} key={t} onClick={() => { setSelected(null); setSearchType(t) }}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
+      {(["track", "album", "artist", "artist.tracks", "artist.albums", "album.tracks"] as const).map(t => <button className={`fbtn${searchType === t ? " on" : ""}`} key={t} onClick={() => { setSelected(null); setSearchType(t) }}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
     </div>
     <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
       <input onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="Enter search query…" style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 4, color: TEXT, flex: 1, fontFamily: "inherit", fontSize: 13, padding: "6px 10px" }} type="text" value={searchQuery} />
