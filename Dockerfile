@@ -17,4 +17,7 @@ COPY --chown=bun:bun . .
 ENV NODE_ENV=production
 EXPOSE 4545/tcp
 EXPOSE 45454/udp
+
+VOLUME [ "/app/data" ]
+
 CMD bun src; sleep 3600
