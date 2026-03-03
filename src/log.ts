@@ -12,4 +12,4 @@ export const warn = (level: 'DEVWARN:' | 'WARN:', message: Message, context?: Co
   else console.warn(level, message, context)
   return false
 }
-export const log = (level: 'LOG:', message: Message, context?: Context): void => context === undefined ? console.log(level, message) : console.log(level, message, context)
+export const log = (message: Message, context?: Context): void => context === undefined ? console.log('LOG:', message) : console.log('LOG:', message, context)

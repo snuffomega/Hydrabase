@@ -1,14 +1,14 @@
 import { and, eq, like, or } from 'drizzle-orm'
 
 import type { DB } from '..'
-import type { TrackSearchResult } from '../../Metadata'
+import type { Track } from '../../RequestManager'
 
 import { schema } from '../schema'
 
 export class TrackRepository {
   constructor(private readonly db: DB) {}
 
-  lookupByArtistIds(artistIds: Map<string, string>, includePeers = true): (TrackSearchResult & { address: `0x${string}` })[] {
+  lookupByArtistIds(artistIds: Map<string, string>, includePeers = true): Track[] {
     return this.db.select().from(schema.track)
       .where(and(or(...artistIds.entries().map(([pluginId, artistId]) => and(eq(schema.track.plugin_id, pluginId), eq(schema.track.artist_id, artistId)))), includePeers ? undefined : eq(schema.track.address, '0x0')))
       .all()
@@ -21,7 +21,7 @@ export class TrackRepository {
       }))
   }
 
-  searchByName(query: string, includePeers = true): (TrackSearchResult & { address: `0x${string}` })[] {
+  searchByName(query: string, includePeers = true): Track[] {
     return this.db.select().from(schema.track)
       .where(and(like(schema.track.name, `%${query}%`), includePeers ? undefined : eq(schema.track.address, '0x0')))
       .all()
@@ -33,7 +33,7 @@ export class TrackRepository {
       }))
   }
 
-  upsertFromPeer(result: TrackSearchResult, peerAddress: `0x${string}`) {
+  upsertFromPeer(result: Track, peerAddress: `0x${string}`) {
     const set = {
       ...result,
       address: peerAddress,
@@ -43,7 +43,7 @@ export class TrackRepository {
     this.db.insert(schema.track).values(set).onConflictDoUpdate({ set, target: [schema.track.id, schema.track.plugin_id, schema.track.address] }).run()
   }
     
-  upsertFromPlugin(result: TrackSearchResult) {
+  upsertFromPlugin(result: Track) {
     const set = {
       ...result,
       address: '0x0',

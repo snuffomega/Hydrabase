@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 
 import type { DB } from './db'
 import type { MetadataPlugin } from './Metadata'
+import type { DHT_Node } from './networking/dht'
 import type Peers from './Peers'
 
 import { error } from './log'
@@ -47,6 +48,7 @@ export class StatsReporter {
     private readonly address: `0x${string}`,
     private readonly plugins: MetadataPlugin[],
     private readonly peers: Peers,
+    private readonly dht: DHT_Node,
     private readonly db: DB,
     private readonly intervalMs = 10_000
   ) {
@@ -63,7 +65,7 @@ export class StatsReporter {
     return {
       address: this.address,
       connectedPeers: this.peers.count,
-      dhtNodes: this.peers.dht.nodes.map(({host,port}) => `${host}:${port}`),
+      dhtNodes: this.dht.nodes.map(({host,port}) => `${host}:${port}`),
       installedPlugins: this.plugins.map(p => p.id),
       knownPeers: this.knownPeers().filter(a => a !== '0x0'),
       knownPlugins: this.knownPlugins(),

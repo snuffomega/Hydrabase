@@ -22,13 +22,13 @@ export class HIP2_Conn_Message {
   public readonly send = {
     request: async <T extends Request['type']>(request: Request & { type: T }): Promise<Response<T>> => {
       const { nonce, promise } = this.requestManager.register<T>()
-      log('LOG:', `[HIP2] Sending request ${nonce} to peer ${this.peer.address}`)
+      log(`[HIP2] Sending request ${nonce} to peer ${this.peer.address}`)
       this.peer.send(JSON.stringify({ nonce, request }))
       const results = await promise
-      log('LOG:', `[HIP2] Received ${results.length} results from ${this.peer.address}`)
+      log(`[HIP2] Received ${results.length} results from ${this.peer.address}`)
       return results
     },
-    response: (response: Response, nonce: number) => this.peer.send(JSON.stringify({ nonce, response }))
+    response: <T extends Request['type']>(response: Response<T>, nonce: number) => this.peer.send(JSON.stringify({ nonce, response }))
   }
 
   constructor(private readonly peer: Peer, private readonly requestManager: RequestManager) {}
@@ -49,7 +49,7 @@ export class HIP2_Conn_Message {
     const {data,error} = MessageSchemas[type].safeParse(result[type])
     if (!data) return warn('DEVWARN:', `[HIP2] Unexpected ${type} from ${this.peer.address}`, error ? {error:error.issues, message} : {message})
     
-    log('LOG:', `[HIP2] Received ${type}${nonce ? ` ${nonce}` : ''} from ${this.peer.address}`)
+    log(`[HIP2] Received ${type}${nonce ? ` ${nonce}` : ''} from ${this.peer.address}`)
 
     return { data, nonce, type }
   }

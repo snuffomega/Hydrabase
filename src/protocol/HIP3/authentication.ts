@@ -38,22 +38,18 @@ const verifyAuth = (auth: Auth | undefined, address: string | undefined): [numbe
 
 const verify = {
   client: {
-    address: async (hostname: `ws://${string}`) => {
-      log('LOG:', `[HIP3] Verifying server address ${hostname}`)
-      const res = await fetch(`${hostname.replace('ws://', 'http://')  }/auth`)
-      const data = await res.text()
-      const auth = AuthSchema.parse(JSON.parse(data))
-      const signature = Signature.fromString(auth.signature)
-      if (!signature.verify(`I am ${hostname}`, auth.address)) {
-        warn('DEVWARN:', '[HIP3] Invalid authentication from server')
-        return false
-      }
-      return auth.address
-    }
+    address: (hostname: `ws://${string}`) => new Promise<`0x${string}` | false>(resolve => {
+      log(`[HIP3] Verifying server address ${hostname}`)
+      const authUrl = `${hostname.replace('ws://', 'http://')}/auth`
+      fetch(authUrl).then(async response => {
+        const auth = AuthSchema.parse(JSON.parse(await response.text()))
+        return resolve(Signature.fromString(auth.signature).verify(`I am ${hostname}`, auth.address) ? auth.address : warn('DEVWARN:', "[HIP3] Invalid authentication from client's server"))
+      }).catch((error: Error) => resolve(warn('WARN:', `[HIP3] Failed to authenticate server ${authUrl}`, `- ${error.name} ${error.message}`)))
+    })
   },
   server: {
     address: (headers: Record<string, string>): `0x${string}` | Response => {
-      log('LOG:', `[HIP3] Verifying client address`)
+      log(`[HIP3] Verifying client address`)
       const { 'sec-websocket-protocol': protocol, 'x-address': address, 'x-api-key': _apiKey, 'x-signature': _signature } = headers
       const signature = _signature ? Signature.fromString(_signature) : undefined
 
@@ -68,12 +64,18 @@ const verify = {
       return address as `0x${string}` ?? '0x0'
     },
     hostname: async (headers: Record<string, string>, address: `0x${string}`): Promise<`ws://${string}` | Response> => {
-      log('LOG:', `[HIP3] Verifying client hostname ${address}`)
-      if (address === '0x0') {return 'ws://'}
+      log(`[HIP3] Verifying client hostname ${address}`)
+      if (address === '0x0') return 'ws://'
       const hostname = headers['x-hostname']
-      if (!hostname) {return new Response('Missing hostname header', { status: 400 })}
-      const data = await (await fetch(`${hostname.replace('ws://', 'http://')  }/auth`)).text()
-      if (!Signature.fromString(AuthSchema.parse(JSON.parse(data)).signature).verify(`I am ${hostname}`, address)) {return new Response('Invalid authentication from your server', { status: 401 })}
+      if (!hostname) return new Response('Missing hostname header', { status: 400 })
+      const authUrl = `${hostname.replace('ws://', 'http://')}/auth`
+      const data = await new Promise<`0x${string}` | false>(resolve => {
+        fetch(authUrl).then(async response => {
+          const auth = AuthSchema.parse(JSON.parse(await response.text()))
+          return resolve(Signature.fromString(auth.signature).verify(`I am ${hostname}`, auth.address) ? auth.address : warn('DEVWARN:', '[HIP3] Invalid authentication from server'))
+        }).catch((error: Error) => resolve(warn('WARN:', `[HIP3] Failed to authenticate server ${authUrl}`, `- ${error.name} ${error.message}`)))
+      })
+      if (!data) return new Response('Invalid authentication from your server', { status: 401 })
       return hostname as `ws://${string}`
     }
   }

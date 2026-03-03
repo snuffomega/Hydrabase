@@ -1,6 +1,6 @@
 # Hydrabase - WIP
 
-Hydrabase is web-of-trust inspired consensus-less distributed relational database. The networks primary purpose is to act as a unified source that propagates music metadata.
+Hydrabase is web-of-trust inspired consensus-less distributed relational database. Hydrabase is a P@P network that acts as a unified source for music metadata.
 
 ## Install
 

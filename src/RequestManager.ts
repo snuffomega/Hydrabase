@@ -11,17 +11,16 @@ export const ResponseSchema = z.union([z.array(TrackSearchResultSchema), z.array
 export type Album = z.infer<typeof AlbumSearchResultSchema>
 export type Artist = z.infer<typeof ArtistSearchResultSchema>
 export type Request = z.infer<typeof RequestSchema>
-export type Response<T extends keyof MessageMap = keyof MessageMap> = MessageMap[T]
-export type Track = z.infer<typeof TrackSearchResultSchema>
-
-interface MessageMap {
-  album: Album[]
-  'album.tracks': Track[]
-  artist: Artist[]
-  'artist.albums': Album[]
-  'artist.tracks': Track[]
-  track: Track[]
+export type Response<T extends keyof SearchResult = keyof SearchResult> = SearchResult[T][]
+export interface SearchResult {
+  album: Album
+  'album.tracks': Track
+  artist: Artist
+  'artist.albums': Album
+  'artist.tracks': Track
+  track: Track
 }
+export type Track = z.infer<typeof TrackSearchResultSchema>
 
 interface PendingRequest<T extends Request['type']> {
   reject: (reason: Error) => void

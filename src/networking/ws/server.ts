@@ -5,7 +5,7 @@ import type { Account } from "../../Crypto/Account";
 import type Peers from '../../Peers';
 
 import { CONFIG } from '../../config'
-import { log, warn } from '../../log';
+import { error, log, warn } from '../../log';
 import { HIP3_CONN_Authentication } from '../../protocol/HIP3/authentication'
 import { portForward } from '../upnp'
 
@@ -63,14 +63,6 @@ export class WebSocketServerConnection {
   }
 }
 
-await Bun.build({
-  conditions: ["browser", "module", "import"],
-  define: { __CDN_URL__: 'https://cdn.jsdelivr.net/npm/@iplookup/country/', VERSION: JSON.stringify(version) },
-  entrypoints: ["./dashboard/src/main.tsx"],
-  outdir: "./dist",
-  target: "browser",
-});
-
 const getAddress = async (headers: Record<string, string>, peers: Peers): Promise<[number, string] | `0x${string}`> => {
   const address = HIP3_CONN_Authentication.verifyServerAddress(headers)
   if (address instanceof Response) return [address.status, await address.text()]
@@ -85,7 +77,7 @@ const getHostname = async (headers: Record<string, string>, address: `0x${string
 }
 
 const handleConnection = async (server: Bun.Server<WebSocketData>, req: Request, peers: Peers): Promise<undefined | { address?: `0x${string}`, hostname?: `ws://${string}`; res: [number, string], }> => {
-  log('LOG:', `[SERVER] Connecting to client`)
+  log(`[SERVER] Connecting to client`)
   const headers = Object.fromEntries(req.headers.entries())
   const address = await getAddress(headers, peers)
   if (Array.isArray(address)) return { res: address }
@@ -95,6 +87,16 @@ const handleConnection = async (server: Bun.Server<WebSocketData>, req: Request,
 }
 
 export const startServer = (account: Account, peers: Peers) => {
+  log('[SERVER] Starting Server')
+  Bun.build({
+    conditions: ["browser", "module", "import"],
+    define: { __CDN_URL__: 'https://cdn.jsdelivr.net/npm/@iplookup/country/', VERSION: JSON.stringify(version) },
+    entrypoints: ["./dashboard/src/main.tsx"],
+    outdir: "./dist",
+    target: "browser",
+  }).then(build => log(`[SERVER] Dashboard ${build.success ? 'built successfully' : 'failed to build'}`))
+  .catch(err => error('ERROR:', '[SERVER] Failed to build dashboard', {err}))
+
   portForward(CONFIG.serverPort, 'Hydrabase (TCP)', 'TCP');
   const server = Bun.serve({
     fetch: async (req, server) =>  {
@@ -131,5 +133,5 @@ export const startServer = (account: Account, peers: Peers) => {
       }
     }
   })
-  log('LOG:', `[SERVER] Listening on port ${server.port}`)
+  log(`[SERVER] Listening on port ${server.port}`)
 }

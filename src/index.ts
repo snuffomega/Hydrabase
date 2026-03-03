@@ -1,21 +1,19 @@
 import { error } from './log';
-import Node from './Node'
+import * as Node from './Node'
 
 process.on('unhandledRejection', (err) => error('ERROR:', '[MAIN] Unhandled rejection', {err}))
 process.on('uncaughtException', (err) => error('ERROR:', '[MAIN] Uncaught exception', {err}))
 
-const node = await Node.init()
-
-const artists = await node.search('artist', 'jay z')
-const albums = await node.search('album', 'made in england')
-/*Const tracks = */await node.search('track', 'dont stop me now')
-// Log('LOG:', 'Artist results:', artists)
-// Log('LOG:', 'Album results:', albums)
-// Log('LOG:', 'Track results:', tracks)
+const artists = await Node.search('artist', 'jay z')
+const albums = await Node.search('album', 'made in england')
+/*Const tracks = */await Node.search('track', 'dont stop me now')
+// Log('Artist results:', artists)
+// Log('Album results:', albums)
+// Log('Track results:', tracks)
 if (artists[0]) {
-  await node.search('artist.tracks', artists[0].soul_id)
-  await node.search('artist.albums', artists[0].soul_id)
+  await Node.search('artist.tracks', artists[0].soul_id)
+  await Node.search('artist.albums', artists[0].soul_id)
 }
-if (albums[0]) await node.search('album.tracks', albums[0].soul_id)
+if (albums[0]) await Node.search('album.tracks', albums[0].soul_id)
 
 // TODO: Merge duplicate artists from diff plugins
