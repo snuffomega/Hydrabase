@@ -57,6 +57,7 @@ export default tseslint.config(
       "no-undefined": "off",
       "no-underscore-dangle": "off",
       "no-unused-vars": "off",
+      "no-use-before-define": "off",
       "no-warning-comments": "off",
       "one-var": "off",
       "react/jsx-filename-extension": "off",
@@ -66,11 +67,12 @@ export default tseslint.config(
       "sonarjs/class-name": "off",
       "sonarjs/function-return-type": "off",
       "sonarjs/no-async-constructor": "off",
+      "sonarjs/no-identical-functions": "off",
       "sonarjs/no-nested-conditional": "off",
       "sonarjs/no-nested-template-literals": "off",
       "sort-imports": "off",
       "sort-keys": "off",
-      "sort-vars": "off",
+      "sort-vars": "off"
     },
     settings: {
       react: { version: "detect" },

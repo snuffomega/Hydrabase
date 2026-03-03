@@ -14,14 +14,14 @@ export class HIP4_Conn_Announce {
   constructor(private readonly account: Account, private readonly peer: Peer, private readonly peers: Peers) {}
 
   async handleAnnounce(announce: Announce): Promise<void> {
-    log('LOG:', `[HIP4] Discovered server through ${this.peer.address}: ${announce.hostname}`)
+    log(`[HIP4] Discovered server through ${this.peer.address}: ${announce.hostname}`)
     const peer = await WebSocketClient.init(this.peers, this.account, announce.hostname)
     if (peer) this.peers.add(peer)
   }
 
   sendAnnounce(announce: Announce, address: `0x${string}`): void {
     if (this.peer.hostname === announce.hostname || this.peer.address === address) return
-    log('LOG:', `[HIP4] Announcing server ${announce.hostname} ${address}`)
+    log(`[HIP4] Announcing server ${announce.hostname} ${address}`)
     this.peer.send(JSON.stringify({ announce }))
   }
 }

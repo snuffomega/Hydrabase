@@ -3,16 +3,14 @@ import { Parser } from 'expr-eval'
 import type { Account } from './Crypto/Account';
 import type { DB, Repositories } from './db'
 import type MetadataManager from './Metadata'
-import type { SearchResult } from './Metadata'
-import type Node from './Node';
-import type { Request, Response } from './RequestManager'
+import type { Request, Response, SearchResult } from './RequestManager'
 
 import { CONFIG } from './config'
-import { error, log, warn } from './log';
-import { DHT_Node } from './networking/dht';
+import { log, warn } from './log';
 import WebSocketClient from "./networking/ws/client";
 import { Peer } from "./networking/ws/peer";
 import { startServer, type WebSocketServerConnection } from './networking/ws/server'
+import { PeerMap } from './PeerMap';
 
 const cacheFile = Bun.file('./data/ws-servers.json')
 
@@ -38,18 +36,18 @@ const calculatePeerConfidence = (pluginMatches: Record<string, { match: number, 
     .map(([, { match, mismatch }]) => Parser.evaluate(CONFIG.pluginConfidence, { x: match, y: mismatch }))
 ) // 0-1
 
-const saveResults = <T extends Request['type']>(peerResults: Response<T>, peerConfidence: number, results: Map<bigint, Exclude<SearchResult[T], 'confidence'> & { confidences: number[] }>, peer: Peer) => {
+const saveResults = <T extends Request['type']>(peerResults: Response<T>, peerConfidence: number, results: Map<bigint, SearchResult[T] & { confidences: number[] }>, peer: Peer): Map<bigint, SearchResult[T] & { confidences: number[] }> => {
   for (const _result of peerResults) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { address, confidence: peerClaimedConfidence, ...result } = _result
-    const hash = BigInt(Bun.hash(JSON.stringify(_result)))
-    const finalConfidence = parser.evaluate(CONFIG.finalConfidence, { x: peerConfidence, y: peerClaimedConfidence, z: peer.historicConfidence })
+    const { address, confidence, ...result } = _result
+    const hash = BigInt(Bun.hash(JSON.stringify(result)))
+    const finalConfidence = parser.evaluate(CONFIG.finalConfidence, { x: peerConfidence, y: confidence, z: peer.historicConfidence })
     results.set(hash, { ...result as Exclude<SearchResult[T], 'confidence'>, confidences: [...results.get(hash)?.confidences ?? [], finalConfidence] })
   }
   return results
 }
 
-const searchPeer = async <T extends Request['type']>(request: Request, peer: Peer, results: Map<bigint, Exclude<SearchResult[T], 'confidence'> & { confidences: number[] }>, installedPlugins: Set<string>, confirmedHashes: Set<bigint>) => {
+const searchPeer = async <T extends Request['type']>(request: Request & { type: T }, peer: Peer, results: Map<bigint, SearchResult[T] & { confidences: number[] }>, installedPlugins: Set<string>, confirmedHashes: Set<bigint>): Promise<Map<bigint, SearchResult[T] & { confidences: number[] }>> => {
   const peerResults = await peer.search(request.type, request.query)
   const pluginMatches = checkPluginMatches(peerResults, confirmedHashes)
   const peerConfidence = calculatePeerConfidence(pluginMatches, installedPlugins)
@@ -60,8 +58,6 @@ const isPeer = (peer: Peer | undefined, address: `0x${string}`): peer is Peer =>
 const isOpened = (peer: Peer | undefined, address: `0x${string}`): boolean => peer ? true : warn('WARN:', `[PEERS] Skipping peer ${address}: connection not open`)
 
 export default class Peers {
-  public readonly dht: DHT_Node
-
   get apiPeer() {
     return this.peers.get('0x0')
   }
@@ -71,29 +67,20 @@ export default class Peers {
   }
 
   public get count() { 
-    return this.peerAddresses.length
+    return this.peers.count
   }
   get peerAddresses() {
-    return [...this.peers.keys().filter(address => address !== '0x0')]
+    return this.peers.addresses
   }
-  private readonly peers = new Map<`0x${string}`, Peer>()
+  private readonly peers = new PeerMap()
 
-  constructor(private readonly node: Node, private readonly account: Account, private readonly metadataManager: MetadataManager, private readonly repos: Repositories, private readonly db: DB) {
+  constructor(private readonly account: Account, private readonly metadataManager: MetadataManager, private readonly repos: Repositories, private readonly db: DB, private readonly search: <T extends Request['type']>(type: T, query: string, searchPeers?: boolean) => Promise<Response<T>>) {
     startServer(account, this)
-    this.dht = new DHT_Node(account, this)
-    this.dht.init().catch(err => error('ERROR:', `[DHT] Something went wrong`, {err}))
-    
-    let lastCount = 0
-    setInterval(() => {
-      if (lastCount === this.count) return
-      lastCount = this.count
-      log('LOG:', `[PEERS] Connected to ${this.count} peer${this.count === 1 ? '' : 's'}`)
-    }, 1_000)
   }
 
   public add(socket: WebSocketClient | WebSocketServerConnection) {
-    socket.onClose(() => () => this.peers.delete(socket.peer.address))
-    const peer = new Peer(this.node, socket, this.account, this, this.repos, this.db, this.metadataManager.installedPlugins)
+    socket.onClose(() => this.peers.delete(socket.peer.address))
+    const peer = new Peer(this.search, socket, this.account, this, this.repos, this.db, this.metadataManager.installedPlugins)
     if (socket.peer.address in this.peers) {
       if (socket.peer.address !== '0x0') {
         warn('DEVWARN:', `[PEERS] Tried to connect to existing peer again via ${socket instanceof WebSocketClient ? 'client' : 'server'} ${socket.peer.address} ${socket.peer.hostname}`)
@@ -129,17 +116,16 @@ export default class Peers {
     return peer.isOpened
   }
 
-  public async requestAll<T extends Request['type']>(request: Request & { type: T }, confirmedHashes: Set<bigint>, installedPlugins: Set<string>) {
-    const results = new Map<bigint, Exclude<SearchResult[T], 'confidence'> & { confidences: number[] }>()
-    log('LOG:', `[PEERS] Searching ${this.peerAddresses.length} peer${this.peerAddresses.length === 1 ? '' : 's'} for ${request.type}: ${request.query}`)
+  public async requestAll<T extends Request['type']>(request: Request & { type: T }, confirmedHashes: Set<bigint>, installedPlugins: Set<string>): Promise<Map<bigint, SearchResult[T]>> {
+    const results = new Map<bigint, SearchResult[T] & { confidences: number[] }>()
+    log(`[PEERS] Searching ${this.peerAddresses.length} peer${this.peerAddresses.length === 1 ? '' : 's'} for ${request.type}: ${request.query}`)
     for (const address of this.peerAddresses) {
-      if (!Object.hasOwn(this.peerAddresses, address)) continue
       const peer = this.peers.get(address)
       if (!isPeer(peer, address)) continue
       if (!isOpened(peer, address)) continue
-      (await searchPeer(request, peer, results, installedPlugins, confirmedHashes)).entries().map(result => results.set(result[0], result[1]))
+      (await searchPeer(request, peer, results, installedPlugins, confirmedHashes)).entries().map(([hash,item]) => results.set(BigInt(hash), item))
     }
-    log('LOG:', `[PEERS] Received ${results.size} results`)
+    log(`[PEERS] Received ${results.size} results`)
     return new Map<bigint, SearchResult[T]>(results.entries().map(([hash, result]) => ([hash, { ...result, confidence: avg(result.confidences) }])))
   }
 

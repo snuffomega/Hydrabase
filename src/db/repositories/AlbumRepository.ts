@@ -1,14 +1,14 @@
 import { and, eq, like, or } from 'drizzle-orm'
 
 import type { DB } from '..'
-import type { AlbumSearchResult } from '../../Metadata'
+import type { Album } from '../../RequestManager'
 
 import { schema } from '../schema'
 
 export class AlbumRepository {
   constructor(private readonly db: DB) {}
 
-  lookupByArtistIds(artistIds: Map<string, string>, includePeers = true): (AlbumSearchResult & { address: `0x${string}` })[] {
+  lookupByArtistIds(artistIds: Map<string, string>, includePeers = true): Album[] {
     return this.db.select().from(schema.album)
       .where(and(or(...artistIds.entries().map(([pluginId, artistId]) => and(eq(schema.album.plugin_id, pluginId), eq(schema.album.artist_id, artistId)))), includePeers ? undefined : eq(schema.album.address, '0x0')))
       .all()
@@ -26,7 +26,7 @@ export class AlbumRepository {
       }))
   }
   
-  lookupBySoulId(soulId: string, includePeers = true): (AlbumSearchResult & { address: `0x${string}` })[] {
+  lookupBySoulId(soulId: string, includePeers = true): Album[] {
     return this.db.select().from(schema.album)
       .where(and(eq(schema.album.soul_id, soulId), includePeers ? undefined : eq(schema.album.address, '0x0')))
       .all()
@@ -43,7 +43,7 @@ export class AlbumRepository {
       }))
   }
 
-  searchByName(query: string, includePeers = true): (AlbumSearchResult & { address: `0x${string}` })[] {
+  searchByName(query: string, includePeers = true): Album[] {
     return this.db.select().from(schema.album)
       .where(and(like(schema.album.name, `%${query}%`), includePeers ? undefined : eq(schema.album.address, '0x0')))
       .all()
@@ -61,7 +61,7 @@ export class AlbumRepository {
       }))
   }
   
-  upsertFromPeer(result: AlbumSearchResult, peerAddress: `0x${string}`) {
+  upsertFromPeer(result: Album, peerAddress: `0x${string}`) {
     const set = {
       ...result,
       address: peerAddress,
@@ -71,7 +71,7 @@ export class AlbumRepository {
     this.db.insert(schema.album).values(set).onConflictDoUpdate({ set, target: [schema.album.id, schema.album.plugin_id, schema.album.address] }).run()
   }
 
-  upsertFromPlugin(result: AlbumSearchResult) {
+  upsertFromPlugin(result: Album) {
     const set = {
       ...result,
       address: '0x0',

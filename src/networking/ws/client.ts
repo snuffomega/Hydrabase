@@ -41,7 +41,7 @@ export default class WebSocketClient {
 
   static readonly init = async (peers: Peers, account: Account, hostname: `ws://${string}`) => {
     const address = await HIP3_CONN_Authentication.verifyClientAddress(hostname)
-    if (!address) {return false}
+    if (!address) return warn('DEVWARN:', `[CLIENT] Server address authentication failed ${hostname}`)
     if (peers.has(address)) return warn('DEVWARN:', `[CLIENT] Already connected/connecting to peer ${address}`)
     if (address === account.address) return warn('DEVWARN:', `[CLIENT] Not connecting to self`)
     return new WebSocketClient(account, { address, hostname }, peers)
@@ -72,18 +72,18 @@ export default class WebSocketClient {
 
   private _connect(account: Account) {
     const headers = HIP3_CONN_Authentication.proveClientAddress(account, this.peer.hostname)
-    log('LOG:', `[CLIENT] Connecting to server ${this.peer.hostname}`)
+    log(`[CLIENT] Connecting to server ${this.peer.hostname}`)
     this.socket = new WebSocket(this.peer.hostname, { headers })
 
     this.socket.addEventListener('open', () => {
-      log('LOG:', `[CLIENT] Connected to server ${this.peer.hostname} ${this.peer.address}`)
+      log(`[CLIENT] Connected to server ${this.peer.hostname} ${this.peer.address}`)
       this._isOpened = true
       this._flushQueue()
       this.openHandler?.()
     })
 
     this.socket.addEventListener('close', ev => {
-      log('LOG:', `[CLIENT] Connection closed with server ${this.peer.hostname} ${this.peer.address}`, `- ${ev.reason}`)
+      log(`[CLIENT] Connection closed with server ${this.peer.hostname} ${this.peer.address}`, `- ${ev.reason}`)
       this._isOpened = false
       for (const handler of this.closeHandlers) handler()
       if (!this.peers.isConnectionOpened(this.peer.address)) {this._scheduleReconnect(account)}
@@ -103,7 +103,7 @@ export default class WebSocketClient {
   }
   private _scheduleReconnect(account: Account) {
     if (this.reconnectTimer) return
-    log('LOG:', `[CLIENT] Reconnecting to ${this.peer.address} ${this.peer.hostname} in ${this.reconnectAttempts*5_000}ms...`)
+    log(`[CLIENT] Reconnecting to ${this.peer.address} ${this.peer.hostname} in ${this.reconnectAttempts*5_000}ms...`)
     this.reconnectTimer = setTimeout(() => this.dontReconnect ? undefined : this._connect(account), this.reconnectAttempts*5_000)
     this.reconnectAttempts++
   }

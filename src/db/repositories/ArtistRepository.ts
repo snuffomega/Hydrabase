@@ -1,14 +1,14 @@
 import { and, eq, like } from 'drizzle-orm'
 
 import type { DB } from '..'
-import type { ArtistSearchResult } from '../../Metadata'
+import type { Artist } from '../../RequestManager'
 
 import { schema } from '../schema'
 
 export class ArtistRepository {
   constructor(private readonly db: DB) {}
 
-  lookupBySoulId(soulId: string, includePeers = true): (ArtistSearchResult & { address: `0x${string}` })[] {
+  lookupBySoulId(soulId: string, includePeers = true): Artist[] {
     return this.db.select().from(schema.artist)
       .where(and(eq(schema.artist.soul_id, soulId), includePeers ? undefined : eq(schema.artist.address, '0x0')))
       .all()
@@ -20,7 +20,7 @@ export class ArtistRepository {
       }))
   }
 
-  searchByName(query: string, includePeers = true): (ArtistSearchResult & { address: `0x${string}` })[] {
+  searchByName(query: string, includePeers = true): Artist[] {
     return this.db.select().from(schema.artist)
       .where(and(like(schema.artist.name, `%${query}%`), includePeers ? undefined : eq(schema.artist.address, '0x0')))
       .all()
@@ -32,7 +32,7 @@ export class ArtistRepository {
       }))
   }
 
-  upsertFromPeer(result: ArtistSearchResult, peerAddress: `0x${string}`) {
+  upsertFromPeer(result: Artist, peerAddress: `0x${string}`) {
     const set = {
       ...result,
       address: peerAddress,
@@ -42,7 +42,7 @@ export class ArtistRepository {
     this.db.insert(schema.artist).values(set).onConflictDoUpdate({ set, target: [schema.artist.id, schema.artist.plugin_id, schema.artist.address] }).run()
   }
 
-  upsertFromPlugin(result: ArtistSearchResult) {
+  upsertFromPlugin(result: Artist) {
     const set = {
       ...result,
       address: '0x0',

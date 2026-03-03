@@ -17,34 +17,33 @@ export class DHT_Node {
 
   private readonly knownPeers = new Set<`${string}:${number}`>();
 
-  constructor (account: Account, peers: Peers, private readonly cacheFile = Bun.file('./data/dht-nodes.json')) {
+  private constructor (account: Account, peers: Peers, onReady: () => void, private readonly cacheFile = Bun.file('./data/dht-nodes.json')) {
     portForward(CONFIG.dhtPort, 'Hydrabase (UDP)', 'UDP');
     this.dht = new DHT({ bootstrap: ['router.bittorrent.com:6881', 'router.utorrent.com:6881', 'dht.transmissionbt.com:6881'], krpc: krpc() })
-    this.dht.listen(CONFIG.dhtPort, '0.0.0.0', () => log('LOG:', `[DHT] Listening on port ${CONFIG.dhtPort}`))
-
+    this.dht.listen(CONFIG.dhtPort, '0.0.0.0', () => log(`[DHT] Listening on port ${CONFIG.dhtPort}`))
     this.dht.on('error', err => error('ERROR:', '[DHT] An error occurred', {err}))
     // This.dht.on('warning', warning => warn('WARN:', '[DHT] A warning was thrown', warning))
     this.dht.on('ready', () => {
-      log('LOG:', '[DHT] Ready', `- ${this.nodes.length} Nodes`)
-
+      log(`[DHT] Ready with ${this.nodes.length} nodes`)
       this.announce()
       setInterval(() => this.announce(), CONFIG.dhtReannounce)
+      onReady()
     })
     let lastNodes = 0
     this.dht.on('node', () => {
       const nodes = this.dht.toJSON().nodes.length
       if (nodes % 25 === 0 && nodes !== lastNodes) {
-        log('LOG:', `[DHT] Connected to ${nodes} nodes`)
+        log(`[DHT] Connected to ${nodes} nodes`)
         lastNodes = nodes
       }
-      cacheFile.write(JSON.stringify(this.dht.toJSON().nodes))
-      // Log('LOG:', `[DHT] Discovered node ${node.host}:${node.port}`)
+      this.cacheFile.write(JSON.stringify(this.dht.toJSON().nodes))
+      // Log(`[DHT] Discovered node ${node.host}:${node.port}`)
     })
     this.dht.on('peer', async peer => {
       if (`ws://${peer.host}:${peer.port}` === `ws://${CONFIG.serverHostname}:${CONFIG.serverPort}`) return
       if (this.knownPeers.has(`${peer.host}:${peer.port}`) || CONFIG.blacklistedIPs.includes(peer.host)) return
       this.knownPeers.add(`${peer.host}:${peer.port}`)
-      log('LOG:', `[DHT] Discovered peer ws://${peer.host}:${peer.port}`)
+      log(`[DHT] Discovered peer ws://${peer.host}:${peer.port}`)
       const client = await WebSocketClient.init(peers, account, `ws://${peer.host}:${peer.port}`)
       if (client === false) return
       peers.add(client)
@@ -53,7 +52,7 @@ export class DHT_Node {
       if (_infoHash.toString('hex') !== DHT_Node.getRoomId()) return
       if (this.knownPeers.has(`${peer.host}:${peer.port}`) || CONFIG.blacklistedIPs.includes(peer.host)) return
       if (`ws://${peer.host}:${peer.port}` === `ws://${CONFIG.serverHostname}:${CONFIG.serverPort}`) return
-      log('LOG:', `[DHT] Received announce from ws://${peer.host}:${peer.port}`)
+      log(`[DHT] Received announce from ws://${peer.host}:${peer.port}`)
       const client = await WebSocketClient.init(peers, account, `ws://${peer.host}:${peer.port}`)
       if (client === false) return
       peers.add(client)
@@ -63,14 +62,16 @@ export class DHT_Node {
 
   static readonly getRoomId = () => Bun.SHA1.hash(CONFIG.dhtRoomSeed + String(Math.round(Date.now()/1000/60/60/6)), 'hex')
 
-  public readonly add = (node: DHTNode) => this.dht.addNode(node)
+  static readonly init = (account: Account, peers: Peers, cacheFile = Bun.file('./data/dht-nodes.json')) => new Promise<DHT_Node>(resolve => {
+    const node = new DHT_Node(account, peers, () => resolve(node))
+    cacheFile.exists().then(async exists => {
+      if (!exists) return
+      const peers: DHTNode[] = await cacheFile.json()
+      for (const peer of peers) node.add(peer)
+    })
+  })
 
-  readonly init = async () => {
-    if (await this.cacheFile.exists()) {
-      const peers: DHTNode[] = await this.cacheFile.json()
-      for (const peer of peers) this.add(peer)
-    }
-  }
+  public readonly add = (node: DHTNode) => this.dht.addNode(node)
 
   private readonly announce = () => {
     const room = DHT_Node.getRoomId()

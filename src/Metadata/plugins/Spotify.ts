@@ -1,6 +1,7 @@
 import { z } from "zod"
 
-import type { AlbumSearchResult, ArtistSearchResult, MetadataPlugin, TrackSearchResult } from ".."
+import type { MetadataPlugin } from ".."
+import type { Album, Artist, Track } from "../../RequestManager"
 
 const spotifyTrackSchema = z.object({
   album: z.object({
@@ -80,7 +81,7 @@ export default class Spotify implements MetadataPlugin {
     if (limit > 50) {throw new Error("Maximum limit is 50")}
   }
 
-  async albumTracks(id: string): Promise<TrackSearchResult[]> {
+  async albumTracks(id: string): Promise<Track[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -97,6 +98,7 @@ export default class Spotify implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.tracks.items.map((track) => ({
+      address: '0x0',
       album: track.album.name,
       artists: track.artists.map((a) => a.name),
       confidence: 1,
@@ -112,7 +114,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async artistAlbums(id: string): Promise<AlbumSearchResult[]> {
+  async artistAlbums(id: string): Promise<Album[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -129,6 +131,7 @@ export default class Spotify implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.albums.items.map((album) => ({
+      address: '0x0',
       album_type: album.album_type,
       artists: album.artists.map((a) => a.name),
       confidence: 1,
@@ -143,7 +146,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async artistTracks(id: string): Promise<TrackSearchResult[]> {
+  async artistTracks(id: string): Promise<Track[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -160,6 +163,7 @@ export default class Spotify implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.tracks.items.map((track) => ({
+      address: '0x0',
       album: track.album.name,
       artists: track.artists.map((a) => a.name),
       confidence: 1,
@@ -175,7 +179,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async searchAlbum(term: string): Promise<AlbumSearchResult[]> {
+  async searchAlbum(term: string): Promise<Album[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -194,6 +198,7 @@ export default class Spotify implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.albums.items.map((album) => ({
+      address: '0x0',
       album_type: album.album_type,
       artists: album.artists.map((a) => a.name),
       confidence: 1,
@@ -208,7 +213,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async searchArtist(term: string): Promise<ArtistSearchResult[]> {
+  async searchArtist(term: string): Promise<Artist[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -227,6 +232,7 @@ export default class Spotify implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.artists.items.map((artist) => ({
+      address: '0x0',
       confidence: 1,
       external_urls: artist.external_urls,
       followers: artist.followers.total,
@@ -240,7 +246,7 @@ export default class Spotify implements MetadataPlugin {
     }))
   }
 
-  async searchTrack(term: string): Promise<TrackSearchResult[]> {
+  async searchTrack(term: string): Promise<Track[]> {
     const token = await this.authenticate()
 
     const params = new URLSearchParams({
@@ -250,15 +256,14 @@ export default class Spotify implements MetadataPlugin {
       type: "track",
     })
 
-    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const response = await fetch(`${this.baseUrl}search?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` }, })
 
     const data = await response.json()
     const parsed = spotifySearchResponseSchema.safeParse(data)
     if (!parsed.success) {throw new Error(`Invalid Spotify API response: ${parsed.error}`)}
 
     return parsed.data.tracks.items.map((track) => ({
+      address: '0x0',
       album: track.album.name,
       artists: track.artists.map((a) => a.name),
       confidence: 1,
@@ -275,10 +280,7 @@ export default class Spotify implements MetadataPlugin {
   }
 
   private async authenticate(): Promise<string> {
-    if (this.accessToken && Date.now() < this.tokenExpiry) {
-      return this.accessToken
-    }
-
+    if (this.accessToken && Date.now() < this.tokenExpiry) return this.accessToken
     const response = await fetch(this.tokenUrl, {
       body: new URLSearchParams({ grant_type: "client_credentials" }),
       headers: {
@@ -287,14 +289,11 @@ export default class Spotify implements MetadataPlugin {
       },
       method: "POST",
     })
-
     const data = await response.json()
     const parsed = spotifyTokenResponseSchema.safeParse(data)
     if (!parsed.success) {throw new Error(`Invalid Spotify token response: ${parsed.error}`)}
-
     this.accessToken = parsed.data.access_token
     this.tokenExpiry = Date.now() + parsed.data.expires_in * 1000 - 60_000 // Refresh 1min early
-
     return this.accessToken
   }
 }

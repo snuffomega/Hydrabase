@@ -1,6 +1,7 @@
-import { z } from "zod";
+import { z } from "zod"
 
-import type { AlbumSearchResult, ArtistSearchResult, MetadataPlugin, TrackSearchResult } from "..";
+import type { MetadataPlugin } from ".."
+import type { Album, Artist, Track } from "../../RequestManager"
 
 const iTunesTrackSearchSchema = z.object({
   artistName: z.string(),
@@ -87,7 +88,7 @@ export default class ITunes implements MetadataPlugin {
     if (limit > 200) {throw new Error('Maximum limit is 200')}
   }
 
-  async albumTracks(id: string): Promise<TrackSearchResult[]> {
+  async albumTracks(id: string): Promise<Track[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'song',
@@ -103,6 +104,7 @@ export default class ITunes implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid iTunes API response: ${parsed.error}`);}
 
     return parsed.data.results.map(result => ({
+      address: '0x0',
       album: result.collectionName ?? '',
       artists: [result.artistName],
       confidence: 1,
@@ -118,7 +120,7 @@ export default class ITunes implements MetadataPlugin {
     }))
   }
 
-  async artistAlbums(id: string): Promise<AlbumSearchResult[]> {
+  async artistAlbums(id: string): Promise<Album[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'album',
@@ -137,6 +139,7 @@ export default class ITunes implements MetadataPlugin {
       const trackCount = result.trackCount ?? 0
       const albumType = trackCount <= 3 ? 'single' : trackCount <= 6 ? 'ep' : 'album'
       return {
+        address: '0x0',
         album_type: albumType,
         artists: [result.artistName],
         confidence: 1,
@@ -152,7 +155,7 @@ export default class ITunes implements MetadataPlugin {
     });
   }
 
-  async artistTracks(id: string): Promise<TrackSearchResult[]> {
+  async artistTracks(id: string): Promise<Track[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'song',
@@ -168,6 +171,7 @@ export default class ITunes implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid iTunes API response: ${parsed.error}`);}
 
     return parsed.data.results.map(result => ({
+      address: '0x0',
       album: result.collectionName ?? '',
       artists: [result.artistName],
       confidence: 1,
@@ -183,7 +187,7 @@ export default class ITunes implements MetadataPlugin {
     }))
   }
 
-  async searchAlbum(term: string): Promise<AlbumSearchResult[]> {
+  async searchAlbum(term: string): Promise<Album[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'album',
@@ -201,6 +205,7 @@ export default class ITunes implements MetadataPlugin {
       const trackCount = result.trackCount ?? 0;
       const albumType = trackCount <= 3 ? 'single' : trackCount <= 6 ? 'ep' : 'album'
       return {
+        address: '0x0',
         album_type: albumType,
         artists: [result.artistName],
         confidence: 1,
@@ -216,7 +221,7 @@ export default class ITunes implements MetadataPlugin {
     });
   }
 
-  async searchArtist(term: string): Promise<ArtistSearchResult[]> {
+  async searchArtist(term: string): Promise<Artist[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'musicArtist',
@@ -231,6 +236,7 @@ export default class ITunes implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid iTunes API response: ${parsed.error}`);}
 
     return parsed.data.results.map(result => ({
+      address: '0x0',
       confidence: 1,
       external_urls: result.artistViewUrl ? { itunes: result.artistViewUrl } : {},
       followers: 0,
@@ -244,7 +250,7 @@ export default class ITunes implements MetadataPlugin {
     }));
   }
 
-  async searchTrack(term: string): Promise<TrackSearchResult[]> {
+  async searchTrack(term: string): Promise<Track[]> {
     const params = new URLSearchParams({
       country: this.country,
       entity: 'musicTrack',
@@ -259,6 +265,7 @@ export default class ITunes implements MetadataPlugin {
     if (!parsed.success) {throw new Error(`Invalid iTunes API response: ${parsed.error}`);}
 
     return parsed.data.results.map(result => ({
+      address: '0x0',
       album: result.collectionName ?? '',
       artists: [result.artistName],
       confidence: 1,

@@ -4,7 +4,6 @@ import { Parser } from 'expr-eval'
 import type { Account } from '../../Crypto/Account';
 import type { DB, Repositories } from "../../db";
 import type { MetadataPlugin } from "../../Metadata";
-import type Node from "../../Node";
 import type Peers from "../../Peers";
 import type { NodeStats } from "../../StatsReporter";
 import type { WebSocketServerConnection } from "./server";
@@ -131,17 +130,17 @@ export class Peer {
       const stats = collectPeerStats(this.db, _data.address, this.plugins)
       this.send(JSON.stringify({ nonce, peer_stats_response: stats }))
     },
-    request: async <T extends Request['type']>(request: Request & { type: T }, nonce: number) => this.HIP2_Conn_Message.send.response(await this.node.search(request.type, request.query, this.address === '0x0') as Response<T>, nonce),
-    response: (response: Response, nonce: number) => { if (!this.requestManager.resolve(nonce, response)) {warn('DEVWARN:', `[HIP2] Unexpected response nonce ${nonce} from ${this.socket.peer.address}`)} }
+    request: async <T extends Request['type']>(request: Request & { type: T }, nonce: number) => this.HIP2_Conn_Message.send.response(await this.searchNode(request.type, request.query, this.address === '0x0'), nonce),
+    response: (response: Response, nonce: number) => { if (!this.requestManager.resolve(nonce, response)) warn('DEVWARN:', `[HIP2] Unexpected response nonce ${nonce} from ${this.socket.peer.address}`)}
   }
 
   private startTime?: number
 
-  constructor(private readonly node: Node, private readonly socket: WebSocketClient | WebSocketServerConnection, account: Account, peers: Peers, private readonly repos: Repositories, private readonly db: DB, public readonly plugins: MetadataPlugin[]) {
+  constructor(private readonly searchNode: <T extends Request['type']>(type: T, query: string, searchPeers: boolean) => Promise<Response<T>>, private readonly socket: WebSocketClient | WebSocketServerConnection, account: Account, peers: Peers, private readonly repos: Repositories, private readonly db: DB, public readonly plugins: MetadataPlugin[]) {
     this.requestManager = new RequestManager()
     this.HIP2_Conn_Message = new HIP2_Conn_Message(this, this.requestManager)
     this.HIP4_Conn_Announce = new HIP4_Conn_Announce(account, this, peers)
-    // Log('LOG:', `Creating peer ${socket.address} as ${socket instanceof WebSocketClient ? 'client' : 'server'}`)
+    // Log(`Creating peer ${socket.address} as ${socket instanceof WebSocketClient ? 'client' : 'server'}`)
     this.socket.onOpen(() => {
       this.startTime = Number(new Date())
     })
@@ -162,8 +161,8 @@ export class Peer {
   public async search<T extends Request['type']>(type: T, query: string): Promise<Response<T>> {
     const response = await this.HIP2_Conn_Message.send.request({ query, type })
     for (const result of response) {
-      if (type === 'track') {this.repos.track.upsertFromPeer(result as Track, this.socket.peer.address)}
-      else if (type === 'album') {this.repos.album.upsertFromPeer(result as Album, this.socket.peer.address)}
+      if (type === 'track' || type === 'artist.tracks' || type === 'album.tracks') {this.repos.track.upsertFromPeer(result as Track, this.socket.peer.address)}
+      else if (type === 'album' || type === 'artist.albums') {this.repos.album.upsertFromPeer(result as Album, this.socket.peer.address)}
       else if (type === 'artist') {this.repos.artist.upsertFromPeer(result as Artist, this.socket.peer.address)}
     }
     return response;

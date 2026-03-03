@@ -1,11 +1,8 @@
 import { type JSX, useState } from "react";
 
-import type { AlbumSearchResult, ArtistSearchResult, TrackSearchResult } from "../../../../../src/Metadata";
-import type { Request } from "../../../../../src/RequestManager";
+import type { Album, Artist, Request, SearchResult, Track } from "../../../../../src/RequestManager";
 
 import { BORD, MUTED, panel, SURF, TEXT } from "../../../theme";
-
-type AnyResult = AlbumSearchResult | ArtistSearchResult | TrackSearchResult;
 
 type Props = SearchResultsProps & {
   onSearch: () => void;
@@ -22,15 +19,15 @@ interface SearchResultsProps {
   searchLoading: boolean
   searchResults: null | unknown[]
   searchType: Request['type']
-  selected: AnyResult | null
-  setSelected: React.Dispatch<React.SetStateAction<AnyResult | null>>
+  selected: null | SearchResult[keyof SearchResult]
+  setSelected: React.Dispatch<React.SetStateAction<null | SearchResult[keyof SearchResult]>>
 }
 
-const isTrack  = (_r: AnyResult, type: Request['type']): _r is TrackSearchResult  => type === "track" || type === "artist.tracks" || type === 'album.tracks'
-const isAlbum  = (_r: AnyResult, type: Request['type']): _r is AlbumSearchResult  => type === "album" || type === "artist.albums"
-const isArtist = (_r: AnyResult, type: Request['type']): _r is ArtistSearchResult => type === "artist"
+const isTrack  = (_r: SearchResult[keyof SearchResult], type: Request['type']): _r is Track  => type === "track" || type === "artist.tracks" || type === 'album.tracks'
+const isAlbum  = (_r: SearchResult[keyof SearchResult], type: Request['type']): _r is Album  => type === "album" || type === "artist.albums"
+const isArtist = (_r: SearchResult[keyof SearchResult], type: Request['type']): _r is Artist => type === "artist"
 
-const getSubtitle = (r: AnyResult, type: Request['type']): string => {
+const getSubtitle = (r: SearchResult[keyof SearchResult], type: Request['type']): string => {
   if (isTrack(r, type)) return `${r.artists.join(", ")} · ${r.album}`
   if (isAlbum(r, type)) return `${r.artists.join(", ")} · ${r.release_date.slice(0, 4)} · ${r.total_tracks} tracks`
   if (isArtist(r, type)) return `${r.followers} followers · ${r.genres.join(", ")}`
@@ -45,7 +42,7 @@ const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) 
   </div>
 }
 
-const DetailPanel = ({ onClose, onTogglePlay, playingId, r, type }: { onClose: () => void; onTogglePlay: (id: string, previewUrl: string) => void; playingId: null | string; r: AnyResult; type: Request['type'] }) => {
+const DetailPanel = ({ onClose, onTogglePlay, playingId, r, type }: { onClose: () => void; onTogglePlay: (id: string, previewUrl: string) => void; playingId: null | string; r: SearchResult[keyof SearchResult]; type: Request['type'] }) => {
   const link = r.external_urls ? Object.values(r.external_urls)[0] as string : undefined;
   const isPlaying = playingId === r.id;
   const artStyle = isArtist(r, type) ? { borderRadius: "50%" } : { borderRadius: 6 };
@@ -90,7 +87,7 @@ const rawCellBase: React.CSSProperties = {
 
 const formatDuration = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`
 
-const ResultRow = ({ isPlaying, isSelected, onClick, onTogglePlay, r, type }: { isPlaying: boolean; isSelected: boolean; onClick: () => void; onTogglePlay: (id: string, previewUrl: string) => void; r: AnyResult; type: Request['type'] }) => {
+const ResultRow = ({ isPlaying, isSelected, onClick, onTogglePlay, r, type }: { isPlaying: boolean; isSelected: boolean; onClick: () => void; onTogglePlay: (id: string, previewUrl: string) => void; r: SearchResult[keyof SearchResult]; type: Request['type'] }) => {
   const cellBase = { ...rawCellBase, background: isSelected ? `${SURF}cc` : "transparent", outline: isSelected ? `2px solid ${TEXT}` : "none", }
   const cells: React.ReactNode[] = [
     <td key="art" style={{ ...cellBase, padding: "6px 8px 6px 10px", width: 44 }}><img alt="" height={30} src={r.image_url} style={isArtist(r, type) ? { borderRadius: "50%", flexShrink: 0 } : { borderRadius: 3, flexShrink: 0 }} width={30} /></td>,
@@ -136,14 +133,14 @@ const SearchResults = ({ onTogglePlay, playingId, searchElapsed, searchLoading, 
         <thead>
           <tr>{columns.map((col, i) => <th key={i} style={{ background: SURF, borderBottom: `1px solid ${BORD}`, color: MUTED, fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", padding: "7px 10px", textAlign: "left", textTransform: "uppercase", width: i === 0 ? 44 : i === columns.length - 1 ? 60 : undefined }}>{col}</th>)}</tr>
         </thead>
-        <tbody>{(searchResults as AnyResult[]).map((r) => <ResultRow isPlaying={playingId === r.id} isSelected={selected?.id === r.id} key={r.soul_id} onClick={() => setSelected(selected?.id === r.id ? null : r)} onTogglePlay={onTogglePlay} r={r} type={searchType} />)}</tbody>
+        <tbody>{(searchResults as SearchResult[keyof SearchResult][]).map((r) => <ResultRow isPlaying={playingId === r.id} isSelected={selected?.id === r.id} key={r.soul_id} onClick={() => setSelected(selected?.id === r.id ? null : r)} onTogglePlay={onTogglePlay} r={r} type={searchType} />)}</tbody>
       </table>
     </div>
   </>
 }
 
 export const SearchTab = ({ onSearch, onTogglePlay, playingId, searchElapsed, searchError, searchLoading, searchQuery, searchResults, searchType, setSearchQuery, setSearchType }: Props) => {
-  const [selected, setSelected] = useState<AnyResult | null>(null)
+  const [selected, setSelected] = useState<null | SearchResult[keyof SearchResult]>(null)
   const handleSearch = () => {
     setSelected(null)
     onSearch()
