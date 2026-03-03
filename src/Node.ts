@@ -7,13 +7,13 @@ import MetadataManager, { type SearchResult } from './Metadata'
 import ITunes from './Metadata/plugins/iTunes'
 import Spotify from './Metadata/plugins/Spotify'
 import Peers from './Peers'
+import { StatsReporter } from './StatsReporter'
 
 export default class Node {
   get peerCount() {
     return this.peers.count
   }
   private readonly metadataManager: MetadataManager
-
   private readonly peers: Peers
 
   private constructor(account: Account) {
@@ -24,6 +24,8 @@ export default class Node {
     this.metadataManager = new MetadataManager([new ITunes(), ... SPOTIFY_CLIENT_ID && SPOTIFY_CLIENT_SECRET ? [new Spotify({ clientId: SPOTIFY_CLIENT_ID, clientSecret: SPOTIFY_CLIENT_SECRET })] : []], repos)
     this.peers = new Peers(this, account, this.metadataManager, repos, db)
     this.peers.init()
+    const statsReport = new StatsReporter(account.address, this.metadataManager.installedPlugins, this.peers, db)
+    statsReport.init()
   }
 
   static readonly init = async (): Promise<Node> => {
