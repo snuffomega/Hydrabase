@@ -2,8 +2,7 @@ import { sql } from 'drizzle-orm'
 
 import type { DB } from './db'
 import type { MetadataPlugin } from './Metadata'
-import type { DHT_Node } from './networking/dht'
-import type { Peer } from './networking/ws/peer'
+import type Peers from './Peers'
 
 import { error } from './log'
 
@@ -47,9 +46,8 @@ export class StatsReporter {
   constructor(
     private readonly address: `0x${string}`,
     private readonly plugins: MetadataPlugin[],
-    private readonly getPeers: () => Map<`0x${string}`, Peer>,
+    private readonly peers: Peers,
     private readonly db: DB,
-    private readonly dht: DHT_Node,
     private readonly intervalMs = 10_000
   ) {
     setInterval(() => this.report(), this.intervalMs)
@@ -60,14 +58,12 @@ export class StatsReporter {
   }
 
   private async collectStats(): Promise<NodeStats> {
-    const peers = this.getPeers()
-
     const countRow = (rawSql: ReturnType<typeof sql.raw>) => this.db.all<{ n: number }>(rawSql)[0]?.n ?? 0
 
     return {
       address: this.address,
-      connectedPeers: Object.keys(peers).filter(a => a !== '0x0').length,
-      dhtNodes: this.dht.nodes.map(({host,port}) => `${host}:${port}`),
+      connectedPeers: this.peers.count,
+      dhtNodes: this.peers.dht.nodes.map(({host,port}) => `${host}:${port}`),
       installedPlugins: this.plugins.map(p => p.id),
       knownPeers: this.knownPeers().filter(a => a !== '0x0'),
       knownPlugins: this.knownPlugins(),
@@ -76,8 +72,7 @@ export class StatsReporter {
         artists: countRow(countPeerSql('artists')),
         tracks:  countRow(countPeerSql('tracks')),
       },
-      peers: await Promise.all(peers.entries()
-        .filter(([address]) => address !== '0x0')
+      peers: await Promise.all(this.peers.connectedPeers.entries().filter(([,peer]) => peer.address !== '0x0')
         .map(([, { address, averageLatencyMs, historicConfidence, hostname, isOpened, plugins, rxTotal, txTotal, uptimeMs }]) => (
           { address, confidence: historicConfidence, hostname, latency: averageLatencyMs, plugins: plugins.map(({id}) => id), rxTotal, status: isOpened ? 'connected' as const : 'disconnected' as const, txTotal, uptime: uptimeMs }
         ))),
@@ -90,30 +85,24 @@ export class StatsReporter {
     }
   }
 
-  private knownPeers(): `0x${string}`[] {
-    const rows = this.db.all<{ address: `0x${string}` }>(sql.raw(`
-      SELECT DISTINCT address FROM tracks
-      UNION
-      SELECT DISTINCT address FROM artists
-      UNION
-      SELECT DISTINCT address FROM albums
-    `))
-    return rows.map(r => r.address)
-  }
+  private readonly knownPeers = (): `0x${string}`[] => this.db.all<{ address: `0x${string}` }>(sql.raw(`
+    SELECT DISTINCT address FROM tracks
+    UNION
+    SELECT DISTINCT address FROM artists
+    UNION
+    SELECT DISTINCT address FROM albums
+  `)).map(r => r.address)
 
-  private knownPlugins(): string[] {
-    const rows = this.db.all<{ plugin_id: string }>(sql.raw(`
-      SELECT DISTINCT plugin_id FROM tracks
-      UNION
-      SELECT DISTINCT plugin_id FROM artists
-      UNION
-      SELECT DISTINCT plugin_id FROM albums
-    `))
-    return rows.map(r => r.plugin_id)
-  }
+  private readonly knownPlugins = (): string[] => this.db.all<{ plugin_id: string }>(sql.raw(`
+    SELECT DISTINCT plugin_id FROM tracks
+    UNION
+    SELECT DISTINCT plugin_id FROM artists
+    UNION
+    SELECT DISTINCT plugin_id FROM albums
+  `)).map(r => r.plugin_id)
 
   private async report(): Promise<void> {
-    const client = this.getPeers().get('0x0')
+    const client = this.peers.apiPeer
     try {
       if (client?.isOpened) client.sendStats(await this.collectStats())
     } catch (err) {

@@ -13,7 +13,6 @@ import { DHT_Node } from './networking/dht';
 import WebSocketClient from "./networking/ws/client";
 import { Peer } from "./networking/ws/peer";
 import { startServer, type WebSocketServerConnection } from './networking/ws/server'
-import { StatsReporter } from './StatsReporter';
 
 const cacheFile = Bun.file('./data/ws-servers.json')
 
@@ -61,23 +60,29 @@ const isPeer = (peer: Peer | undefined, address: `0x${string}`): peer is Peer =>
 const isOpened = (peer: Peer | undefined, address: `0x${string}`): boolean => peer ? true : warn('WARN:', `[PEERS] Skipping peer ${address}: connection not open`)
 
 export default class Peers {
+  public readonly dht: DHT_Node
+
+  get apiPeer() {
+    return this.peers.get('0x0')
+  }
+
+  get connectedPeers() {
+    return [...this.peers.values()]
+  }
+
   public get count() { 
     return this.peerAddresses.length
   }
-
   get peerAddresses() {
     return [...this.peers.keys().filter(address => address !== '0x0')]
   }
   private readonly peers = new Map<`0x${string}`, Peer>()
 
-  private readonly statsReport: StatsReporter
-
   constructor(private readonly node: Node, private readonly account: Account, private readonly metadataManager: MetadataManager, private readonly repos: Repositories, private readonly db: DB) {
     startServer(account, this)
-    const dht = new DHT_Node(account, this)
-    dht.init().catch(err => error('ERROR:', `[DHT] Something went wrong`, {err}))
-    this.statsReport = new StatsReporter(account.address, metadataManager.installedPlugins, () => this.peers, db, dht)
-
+    this.dht = new DHT_Node(account, this)
+    this.dht.init().catch(err => error('ERROR:', `[DHT] Something went wrong`, {err}))
+    
     let lastCount = 0
     setInterval(() => {
       if (lastCount === this.count) return
@@ -110,8 +115,6 @@ export default class Peers {
   public readonly has = (address: `0x${string}`) => address in this.peers
 
   public async init() {
-    await this.statsReport.init()
-
     if (!(await cacheFile.exists())) return
     const hostnames: `ws://${string}`[] = await cacheFile.json()
     for (const hostname of hostnames) {
