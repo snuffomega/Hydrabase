@@ -27,7 +27,6 @@ const sortPeers = (peers: PeerWithCountry[], filter: FilterState, sortD: number,
 
 export const Dashboard = ({ apiKey, socket }: { apiKey: string; socket: string }) => {
   const [wsState, setWsState] = useState<WsState>("connecting")
-  const [lastPoll, setLastPoll] = useState<Date | null>(null)
   const [peers, setPeers] = useState<PeerWithCountry[]>([])
   const [selfAddr, setSelfAddr] = useState<`0x${string}`>('0x0')
   const [votes, setVotes] = useState<VoteCounts>({ albums: 0, artists: 0, tracks: 0 })
@@ -59,7 +58,6 @@ export const Dashboard = ({ apiKey, socket }: { apiKey: string; socket: string }
   const wsRef = useRef<undefined | WebSocket>(undefined)
   const addLog = useCallback((lv: string, m: string) => { setEventLog((prev) => [...prev.slice(-199), { lv, m, t: new Date().toISOString().slice(11, 19) }]) }, [])
   const applyStats = useCallback((stats: NodeStats) => {
-    setLastPoll(new Date())
     setSelfAddr(stats.address)
     setVotes(stats.votes)
     setPeerData(stats.peerData)
@@ -143,7 +141,7 @@ export const Dashboard = ({ apiKey, socket }: { apiKey: string; socket: string }
     }
   }, [playingId])
   const toggleSort = (k: keyof ApiPeer) => { if (sortK === k) {setSortD((d) => -d)} else { setSortK(k); setSortD(-1) } }
-  const SI = ({ k }: { k: keyof ApiPeer }): JSX.Element => sortK !== k ? <span style={{ opacity: 0.2 }}>⇅</span> : sortD === 1 ? <span style={{ color: ACCENT }}>↑</span> : <span style={{ color: ACCENT }}>↓</span>
+  const SI = ({ k }: { k: keyof ApiPeer | 'icon' }): JSX.Element => sortK !== k ? <span style={{ opacity: 0.2 }}>⇅</span> : sortD === 1 ? <span style={{ color: ACCENT }}>↑</span> : <span style={{ color: ACCENT }}>↓</span>
   const tLabels = Array.from({ length: 60 }, (_, i) => `${60 - i}s`).toReversed()
   const onPeerStatsCallback = (onPeerStats: ({ peer_stats, nonce }: { peer_stats: PeerStats, nonce: number }) => void) => { onPeerStatsRef.current = onPeerStats }
   return <div style={{ background: BG, color: TEXT, display: "flex", fontFamily: "'JetBrains Mono','Courier New',monospace", fontSize: 13, minHeight: "100vh" }}>
