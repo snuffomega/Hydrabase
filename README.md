@@ -134,3 +134,5 @@ Metadata discovered via API lookups and other peers is stored in a database. Whe
 
 ### Future Plans
 While everything listed above is working, Hydrabase is very incomplete. I scatter `TODO`s throughout the code, so if you're super curious, I've listed technical next-steps. But at a high level, most my focus is on improving the confidence scoring mechanism. The end goal is for peers running different plugins to benefit by exchanging api responses from different metadata providers.
+
+![Star History Chart](https://api.star-history.com/image?repos=QuixThe2nd/Hydrabase&type=date&legend=top-left)
