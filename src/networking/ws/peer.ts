@@ -26,9 +26,9 @@ export interface PeerStats {
 
 const countRow = (db: DB, table: 'albums' | 'artists' | 'tracks', address: `0x${string}`) => db.all<{ n: number }>(sql.raw(`SELECT COUNT(*) AS n FROM ${table} WHERE address = '${address}'`))[0]?.n ?? 0
 
-const getPlugins = (db: DB, address: `0x${string}`) => db.all<{ plugin_id: string }>(sql.raw(`SELECT DISTINCT plugin_id FROM tracks WHERE address = '${address}'
-  UNION SELECT DISTINCT plugin_id FROM artists WHERE address = '${address}'
-  UNION SELECT DISTINCT plugin_id FROM albums WHERE address = '${address}'`)).map(r => r.plugin_id)
+const getPlugins = (db: DB, address: `0x${string}`) => db.all<{ plugin_id: string }>(sql.raw(`SELECT DISTINCT plugin_id FROM tracks WHERE address = '${address}' AND confidence=1
+  UNION SELECT DISTINCT plugin_id FROM artists WHERE address = '${address}' AND confidence=1
+  UNION SELECT DISTINCT plugin_id FROM albums WHERE address = '${address}' AND confidence=1`)).map(r => r.plugin_id)
 
 const collectPeerStats = (db: DB, address: `0x${string}`, installedPlugins: MetadataPlugin[]): PeerStats => {
   const installedPluginIds = new Set(installedPlugins.map(p => p.id))
@@ -172,9 +172,9 @@ export class Peer {
   public async search<T extends Request['type']>(type: T, query: string): Promise<Response<T>> {
     const response = await this.HIP2_Conn_Message.send.request({ query, type })
     for (const result of response) {
-      if (type === 'track' || type === 'artist.tracks' || type === 'album.tracks') {this.repos.track.upsertFromPeer(result as Track, this.socket.peer.address)}
-      else if (type === 'album' || type === 'artist.albums') {this.repos.album.upsertFromPeer(result as Album, this.socket.peer.address)}
-      else if (type === 'artist') {this.repos.artist.upsertFromPeer(result as Artist, this.socket.peer.address)}
+      if (type === 'track' || type === 'artist.tracks' || type === 'album.tracks') this.repos.track.upsertFromPeer(result as Track, this.socket.peer.address)
+      else if (type === 'album' || type === 'artist.albums') this.repos.album.upsertFromPeer(result as Album, this.socket.peer.address)
+      else if (type === 'artist') this.repos.artist.upsertFromPeer(result as Artist, this.socket.peer.address)
     }
     return response;
   }
