@@ -93,12 +93,12 @@ export default class Peers {
     this.announce(peer)
   }
 
-  public getConfidence(address: `0x${string}`): number {
+  public getConfidence(address: `0x${string}`): number { // TODO: Soulsync plugin - https://github.com/Nezreka/SoulSync/blob/main/Support/API.md
     const peer = this.peers.get(address)
     if (!peer) return 0
     return peer.historicConfidence // TODO: tit for tat
   }
-
+// TODO: endpoint soulsync can call with user feedback of "spotify result x is listenbrainz result y"
   public readonly has = (address: `0x${string}`) => address in this.peers
 
   public async init() {

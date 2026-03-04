@@ -11,7 +11,7 @@ import Peers from './Peers'
 import { StatsReporter } from './StatsReporter'
 
 const {SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET} = process.env
-
+// TODO: show usernames in peers tab
 const startWorkers = async (): Promise<{ metadataManager: MetadataManager, peers: Peers }> => {
   const account = new Account(await getPrivateKey())
   const { db, repos } = startDatabase()

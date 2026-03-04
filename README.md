@@ -158,4 +158,4 @@ v**MAJOR.MINOR.PATCH**:
 - MINOR = Protocol additive OR app breaking (with clear changelog)
 - PATCH = App-level fixes/updates
 
-![Star History Chart](https://api.star-history.com/image?repos=QuixThe2nd/Hydrabase&type=date&legend=top-left)
+<!-- ![Star History Chart](https://api.star-history.com/image?repos=QuixThe2nd/Hydrabase&type=date&legend=top-left) -->
