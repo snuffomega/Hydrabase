@@ -1,10 +1,9 @@
 services:
   hydrabase:
+    build: .
     image: ghcr.io/quixthe2nd/hydrabase
     container_name: hydrabase
-    ports:
-      - 4544:4544/tcp
-      - 45455:45455/udp
+    network_mode: host
     volumes:
       #- ./data:/app/data
       - /mnt/user/appdata/hydrabase/data:/app/data
