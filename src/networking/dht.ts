@@ -25,7 +25,15 @@ export class DHT_Node {
     // This.dht.on('warning', warning => warn('WARN:', '[DHT] A warning was thrown', warning))
     this.dht.on('ready', () => {
       log(`[DHT] Ready with ${this.nodes.length} nodes`)
-      this.announce()
+      const tryAnnounce = () => {
+        if (this.nodes.length > 0) {
+          this.announce()
+        } else {
+          log('[DHT] Waiting for bootstrap nodes...')
+          setTimeout(tryAnnounce, 5_000)
+        }
+      }
+      tryAnnounce()
       setInterval(() => this.announce(), CONFIG.dhtReannounce)
       onReady()
     })
